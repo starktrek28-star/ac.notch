@@ -159,8 +159,8 @@ final class TypingController {
         Typist.type(corrected + boundary)
         lastCorrection = (word, corrected, boundary)
         notch.show([
-            StripOption(text: word, kind: .original, quoted: true),
             StripOption(text: corrected, kind: .info, highlighted: true),
+            StripOption(text: word, kind: .original, quoted: true),
         ], hideAfter: 2.5)
         return false
     }

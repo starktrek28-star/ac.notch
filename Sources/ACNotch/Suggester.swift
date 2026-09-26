@@ -1,6 +1,7 @@
 import AppKit
 
-/// One slot in the `word | word | word` strip.
+/// One slot in the `word | word | word` strip. The first option is the main one:
+/// what you get when you press space.
 struct StripOption: Equatable {
     enum Kind: Equatable {
         case typed       // the word exactly as typed; picking it keeps it
@@ -88,12 +89,12 @@ final class Suggester {
         var options: [StripOption]
         if let autocorrection {
             options = [
-                StripOption(text: word, kind: .typed, quoted: true),
                 StripOption(text: autocorrection, kind: .correction, highlighted: true),
+                StripOption(text: word, kind: .typed, quoted: true),
             ]
             options += extras.prefix(1).map { StripOption(text: $0, kind: .suggestion) }
         } else {
-            options = [StripOption(text: word, kind: .typed, quoted: misspelled)]
+            options = [StripOption(text: word, kind: .typed, highlighted: true, quoted: misspelled)]
             options += extras.prefix(2).map { StripOption(text: $0, kind: .suggestion) }
         }
         return Analysis(options: options, autocorrection: autocorrection)

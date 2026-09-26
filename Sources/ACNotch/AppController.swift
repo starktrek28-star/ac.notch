@@ -71,6 +71,10 @@ final class AppController: NSObject {
         autocorrect.state = settings.autocorrect ? .on : .off
         menu.addItem(autocorrect)
 
+        let preview = item("Preview Notch Layout", #selector(togglePreviewNotch))
+        preview.state = settings.previewNotch ? .on : .off
+        menu.addItem(preview)
+
         if let app = lastApp, let id = app.bundleIdentifier, id != Bundle.main.bundleIdentifier {
             menu.addItem(.separator())
             let name = app.localizedName ?? id
@@ -116,6 +120,13 @@ final class AppController: NSObject {
 
     @objc private func toggleAutocorrect() {
         settings.autocorrect.toggle()
+        refresh()
+    }
+
+    @objc private func togglePreviewNotch() {
+        settings.previewNotch.toggle()
+        notch.show([StripOption(text: settings.previewNotch ? "Notch preview on" : "Notch preview off", kind: .info)],
+                   hideAfter: 1.5)
         refresh()
     }
 

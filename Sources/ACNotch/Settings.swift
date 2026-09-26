@@ -27,6 +27,12 @@ final class Settings {
         set { defaults.set(newValue, forKey: "autocorrect") }
     }
 
+    /// Draws the notch "wings" layout even on Macs without a notch, around a fake one.
+    var previewNotch: Bool {
+        get { defaults.bool(forKey: "previewNotch") }
+        set { defaults.set(newValue, forKey: "previewNotch") }
+    }
+
     var excludedBundleIDs: Set<String> {
         get {
             guard let list = defaults.array(forKey: "excluded") as? [String] else { return Settings.defaultExcluded }
