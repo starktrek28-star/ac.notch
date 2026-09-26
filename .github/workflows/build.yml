@@ -1,0 +1,38 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Build universal app
+        run: ./scripts/build-app.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACNotch
+          path: build/ACNotch.zip
+
+      - name: Publish "latest-build" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest-build --yes --cleanup-tag || true
+          gh release create latest-build build/ACNotch.zip \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Latest build" \
+            --notes "Automatic build of ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}. Download ACNotch.zip, unzip, move AC Notch.app to Applications, then right-click > Open."
