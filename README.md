@@ -1,11 +1,15 @@
 # AC Notch
 
 iPhone-style autocorrect for the Mac. While you type in any app, three suggestions
-show at the top of the screen, on the notch (or a notch-shaped pill on Macs without one):
+show at the top of the screen. On Macs with a notch, the notch grows "wings": the main
+word (what space will type) on the left, the two alternatives on the right.
 
 ```
-  “teh”  |  the  |  ten
+   the   [ notch ]   “teh” | ten
 ```
+
+Macs without a notch get a notch-shaped pill instead (`the | “teh” | ten`), or turn on
+**Preview Notch Layout** in the menu to see the wings around a pretend notch.
 
 - Press **space** or punctuation and a misspelled word is fixed automatically.
 - Press **backspace** straight after a fix to undo it.
