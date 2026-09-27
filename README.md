@@ -6,7 +6,7 @@ unless **Suggest Word Completions** is on. On Macs with a notch, the notch grows
 word (what space will type) on the left, the two alternatives on the right.
 
 ```
-   the   [ notch ]   “teh” | ten
+   the   [ notch ]   “teh”
 ```
 
 **It follows your text cursor.** By default the strip appears as a frosted `“teh” | the`
