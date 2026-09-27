@@ -266,8 +266,9 @@ final class NotchController {
     private var belowCaret: Bool?
     /// Where the strip was dragged to while following the cursor; nil when it's home.
     private var parkedCenter: NSPoint?
-    /// When the caret itself (not just its text field) was last found.
-    private var lastPreciseCaret = Date.distantPast
+    /// Re-checks the caret while the strip is showing, so it follows the cursor even when it
+    /// moves without typing (a click, the arrow keys, a new line).
+    private var followTimer: Timer?
     private var suppressPick = false
     private var mouseMonitor: Any?
 
@@ -373,6 +374,23 @@ final class NotchController {
         }
     }
 
+    private func startFollowing() {
+        guard followTimer == nil, Settings.shared.followCaret else { return }
+        let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in
+            guard let self, self.panel.isVisible, self.panel.alphaValue > 0, self.drag == nil,
+                  self.parkedCenter == nil, self.model.layout == .floating,
+                  Settings.shared.followCaret else { return }
+            _ = self.placeAtCaret(quiet: true)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        followTimer = timer
+    }
+
+    private func stopFollowing() {
+        followTimer?.invalidate()
+        followTimer = nil
+    }
+
     /// Words change instantly, like typing itself; only the original-word pill popping out is animated.
     private func apply(_ options: [StripOption]) {
         guard options != model.options else { return }
@@ -386,6 +404,7 @@ final class NotchController {
     }
 
     private func reveal() {
+        startFollowing()
         if !panel.isVisible {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
@@ -434,6 +453,7 @@ final class NotchController {
         }, completionHandler: { [weak self] in
             guard let self, self.panel.alphaValue == 0 else { return }
             self.stopSpring()
+            self.stopFollowing()
             self.panel.orderOut(nil)
             self.clearTrail()
         })
@@ -444,20 +464,16 @@ final class NotchController {
     /// Puts the strip a short gap above or below the text cursor, whichever side has more room,
     /// centred on it so the main word sits right over the caret.
     /// Returns false when the focused app doesn't report a cursor position.
-    private func placeAtCaret() -> Bool {
+    private func placeAtCaret(quiet: Bool = false) -> Bool {
         guard drag == nil else { return false }
         let showing = panel.isVisible && panel.alphaValue > 0 && model.layout == .floating
         // A lookup can miss for a moment (a web page mid-update, a space with no width yet).
         // If the strip is already out, leave it where it is rather than hiding or jumping.
-        guard let found = CaretLocator.caret() else {
-            if showing { Diagnostics.log("place: caret lookup missed, staying put") }
+        guard let found = CaretLocator.caret(quiet: quiet) else {
+            if showing, !quiet { Diagnostics.log("place: caret lookup missed, staying put") }
             return showing
         }
-        if !found.precise, showing, Date().timeIntervalSince(lastPreciseCaret) < 5 {
-            Diagnostics.log("place: only a rough position, staying put")
-            return true
-        }
-        if found.precise { lastPreciseCaret = Date() }
+
         let caret = found.rect
         guard let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }
         let area = screen.visibleFrame
@@ -475,9 +491,10 @@ final class NotchController {
         let width = floatWidth
         let left = min(max(caret.midX - caretAnchor, area.minX + 8), area.maxX - width - 8)
 
+        let frame = NSRect(x: left, y: y - pillHeight / 2, width: width, height: pillHeight)
+        if quiet, abs(frame.minX - target.rect.minX) < 1, abs(frame.minY - target.rect.minY) < 1 { return true }
         setLayout(.floating)
-        move(to: NSRect(x: left, y: y - pillHeight / 2, width: width, height: pillHeight),
-             animated: panel.isVisible && panel.alphaValue > 0)
+        move(to: frame, animated: panel.isVisible && panel.alphaValue > 0)
         return true
     }
 

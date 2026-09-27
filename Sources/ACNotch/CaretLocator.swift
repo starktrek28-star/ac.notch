@@ -21,24 +21,24 @@ enum CaretLocator {
 
     /// The caret's rectangle in Cocoa screen coordinates (origin bottom-left), or nil if
     /// the focused app doesn't say. Falls back to the text field's frame for small fields.
-    static func caret() -> Caret? {
+    static func caret(quiet: Bool = false) -> Caret? {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, 0.05)
         guard let focused = element(system, kAXFocusedUIElementAttribute) else {
-            Diagnostics.log("caret: no focused element in \(Diagnostics.frontApp())")
+            if !quiet { Diagnostics.log("caret: no focused element in \(Diagnostics.frontApp())") }
             return nil
         }
         let role = string(focused, kAXRoleAttribute) ?? "?"
 
         if let (rect, how) = selectionBounds(focused) ?? webCaretBounds(focused) {
             let caret = Caret(rect: toCocoa(rect), precise: true, source: how)
-            Diagnostics.log("caret: \(how) \(Diagnostics.describe(caret.rect)) role=\(role) app=\(Diagnostics.frontApp())")
+            if !quiet { Diagnostics.log("caret: \(how) \(Diagnostics.describe(caret.rect)) role=\(role) app=\(Diagnostics.frontApp())") }
             return caret
         }
 
         wakeAccessibility(for: focused)
         guard let field = frame(of: focused), field.height > 0, field.height < 200 else {
-            Diagnostics.log("caret: not found, role=\(role) app=\(Diagnostics.frontApp())")
+            if !quiet { Diagnostics.log("caret: not found, role=\(role) app=\(Diagnostics.frontApp())") }
             return nil
         }
         // Single-line fields that won't say where the caret is (like a browser's address bar):
@@ -50,7 +50,7 @@ enum CaretLocator {
         } else {
             caret = Caret(rect: toCocoa(field), precise: false, source: "field")
         }
-        Diagnostics.log("caret: \(caret.source) \(Diagnostics.describe(caret.rect)) role=\(role) app=\(Diagnostics.frontApp())")
+        if !quiet { Diagnostics.log("caret: \(caret.source) \(Diagnostics.describe(caret.rect)) role=\(role) app=\(Diagnostics.frontApp())") }
         return caret
     }
 
