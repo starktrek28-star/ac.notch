@@ -79,12 +79,12 @@ struct StripView: View {
         .background(background)
     }
 
-    /// Options arranged `other | main | other`. The main option is first in `model.options`;
-    /// with only two, the third slot is left empty so the main word stays centred.
+    /// Options in reading order. The main option is first in `model.options`; with two,
+    /// the typed word goes first so it reads like the fix: `“teh” | the`.
     private var centered: [StripOption?] {
         let options = model.options
         guard options.count >= 2 else { return options.map { $0 } }
-        return [options[1], options[0], options.count > 2 ? options[2] : nil]
+        return [options[1], options[0]] + options.dropFirst(2).map { $0 }
     }
 
     @ViewBuilder
@@ -190,9 +190,19 @@ final class NotchController {
     private var hideWork: DispatchWorkItem?
 
     private let pillHeight: CGFloat = 34
-    private let pillWidth: CGFloat = 380
+    /// The docked pill (Macs without a notch) keeps a notch-like minimum width.
+    private var pillWidth: CGFloat { max(floatWidth, 200) }
     private let wingWidth: CGFloat = 170
-    private let floatWidth: CGFloat = 330
+    /// Floating width fits the words shown: equal slots, each as wide as the longest word.
+    private var floatWidth: CGFloat {
+        let count = max(model.options.count, 1)
+        let widest = model.options.map { option -> CGFloat in
+            let font = NSFont.systemFont(ofSize: 13, weight: option.highlighted ? .semibold : .regular)
+            return (option.label as NSString).size(withAttributes: [.font: font]).width
+        }.max() ?? 0
+        let slot = ceil(widest) + 24
+        return min(max(CGFloat(count) * slot + CGFloat(count - 1) + 16 + 12, 110), 330)
+    }
 
     /// How far you pull before it breaks away from the notch.
     private let detachDistance: CGFloat = 44

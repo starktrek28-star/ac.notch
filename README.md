@@ -1,14 +1,15 @@
 # AC Notch
 
-iPhone-style autocorrect for the Mac. While you type in any app, three suggestions
-show at the top of the screen. On Macs with a notch, the notch grows "wings": the main
+iPhone-style autocorrect for the Mac. When you misspell a word in any app, two options
+appear: what you typed and the fix (`“teh” | the`). Correctly spelled words show nothing,
+unless **Suggest Word Completions** is on. On Macs with a notch, the notch grows "wings": the main
 word (what space will type) on the left, the two alternatives on the right.
 
 ```
    the   [ notch ]   “teh” | ten
 ```
 
-**It follows your text cursor.** By default the strip appears as a frosted `“teh” | the | ten`
+**It follows your text cursor.** By default the strip appears as a frosted `“teh” | the`
 capsule right next to the blinking cursor: below it when you're typing near the top of the
 screen (a browser's search bar), above it near the bottom (a chat box). The cursor is its
 home: if it's ever in the way, drag it somewhere else and it stays there until you press
@@ -18,11 +19,11 @@ web addresses. Turn off
 **Follow Text Cursor** in the menu to keep it on the notch instead.
 
 **On the notch, drag it anywhere.** Pull the strip off the notch and it breaks free into a floating,
-frosted-glass `“teh” | the | ten` capsule, with the main word in the middle like on iPhone. Drop it wherever your eyes are (near a chat box, a search bar)
+frosted-glass `“teh” | the` capsule. Drop it wherever your eyes are (near a chat box, a search bar)
 and it stays there. Drag it back near the notch and it snaps home, or use **Dock Back to Notch**
 in the menu.
 
-Macs without a notch get a notch-shaped pill instead (`“teh” | the | ten`), or turn on
+Macs without a notch get a notch-shaped pill instead (`“teh” | the`), or turn on
 **Preview Notch Layout** in the menu to see the wings around a pretend notch.
 
 - Press **space** or punctuation and a misspelled word is fixed automatically.

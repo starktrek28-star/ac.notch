@@ -34,6 +34,13 @@ final class Settings {
         set { defaults.set(newValue, forKey: "previewNotch") }
     }
 
+    /// Also suggest completions for correctly spelled words (off: the strip only
+    /// appears for misspellings).
+    var showCompletions: Bool {
+        get { defaults.bool(forKey: "showCompletions") }
+        set { defaults.set(newValue, forKey: "showCompletions") }
+    }
+
     /// Show the strip next to the text cursor instead of on the notch.
     var followCaret: Bool {
         get { defaults.object(forKey: "followCaret") as? Bool ?? true }
