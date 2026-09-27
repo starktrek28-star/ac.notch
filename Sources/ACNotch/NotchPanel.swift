@@ -207,6 +207,10 @@ final class NotchController {
         var detached: Bool
     }
     private var drag: Drag?
+    /// Bumped on every show/hide so a late caret lookup can tell it's stale.
+    private var showToken = 0
+    /// Which side of the caret the strip sits on; kept while it still fits so it doesn't flip.
+    private var belowCaret: Bool?
     private var suppressPick = false
     private var mouseMonitor: Any?
 
@@ -232,9 +236,26 @@ final class NotchController {
 
     func show(_ options: [StripOption], hideAfter delay: TimeInterval? = nil) {
         hideWork?.cancel()
+        showToken += 1
         guard !options.isEmpty else { hide(); return }
         model.options = options
-        place()
+        if let delay { hide(after: delay) }
+
+        guard Settings.shared.followCaret else {
+            place()
+            reveal()
+            return
+        }
+        // Look up the caret after the keystroke has been handed on, so typing never waits on it.
+        let token = showToken
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.showToken == token else { return }
+            if !self.placeAtCaret() { self.place() }
+            self.reveal()
+        }
+    }
+
+    private func reveal() {
         if !panel.isVisible {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
@@ -243,11 +264,11 @@ final class NotchController {
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
         }
-        if let delay { hide(after: delay) }
     }
 
     func hide(after delay: TimeInterval = 0) {
         hideWork?.cancel()
+        if delay == 0 { showToken += 1 }
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -286,6 +307,36 @@ final class NotchController {
     }
 
     // MARK: - Placement
+
+    /// Puts the strip just above or below the text cursor, whichever side has more room.
+    /// Returns false when the focused app doesn't report a cursor position.
+    private func placeAtCaret() -> Bool {
+        guard drag == nil, let caret = CaretLocator.caretRect(),
+              let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }
+        let area = screen.visibleFrame
+        let gap: CGFloat = 10
+        let needed = pillHeight + gap
+        let spaceBelow = caret.minY - area.minY
+        let spaceAbove = area.maxY - caret.maxY
+
+        var below = spaceBelow >= spaceAbove
+        if let previous = belowCaret, (previous ? spaceBelow : spaceAbove) >= needed { below = previous }
+        belowCaret = below
+
+        let y = below ? caret.minY - gap - pillHeight / 2 : caret.maxY + gap + pillHeight / 2
+        var x = caret.midX
+        // While typing along the same line, stay put until the caret nears the strip's edge.
+        let current = panel.frame
+        if panel.isVisible, model.layout == .floating, abs(current.midY - y) < 2,
+           abs(caret.midX - current.midX) < floatWidth / 2 - 40 {
+            x = current.midX
+        }
+        x = min(max(x, area.minX + floatWidth / 2 + 8), area.maxX - floatWidth / 2 - 8)
+
+        setLayout(.floating)
+        move(to: floatingFrame(center: NSPoint(x: x, y: y)), animated: panel.isVisible && panel.alphaValue > 0)
+        return true
+    }
 
     private func place() {
         // Mid-drag or mid-animation, the spring owns the frame.
@@ -354,7 +405,11 @@ final class NotchController {
     // MARK: - Dragging
 
     private func handleMouse(_ event: NSEvent) -> NSEvent? {
-        guard event.window === panel else { return event }
+        // Following the caret, the strip places itself: clicks work, dragging doesn't.
+        guard event.window === panel, !Settings.shared.followCaret else {
+            if event.type == .leftMouseDown { suppressPick = false }
+            return event
+        }
         let mouse = NSEvent.mouseLocation
 
         switch event.type {

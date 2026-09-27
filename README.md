@@ -8,7 +8,12 @@ word (what space will type) on the left, the two alternatives on the right.
    the   [ notch ]   “teh” | ten
 ```
 
-**Drag it anywhere.** Pull the strip off the notch and it breaks free into a floating,
+**It follows your text cursor.** By default the strip appears as a frosted `“teh” | the | ten`
+capsule right next to the blinking cursor: below it when you're typing near the top of the
+screen (a browser's search bar), above it near the bottom (a chat box). Turn off
+**Follow Text Cursor** in the menu to keep it on the notch instead.
+
+**On the notch, drag it anywhere.** Pull the strip off the notch and it breaks free into a floating,
 frosted-glass `“teh” | the | ten` capsule, with the main word in the middle like on iPhone. Drop it wherever your eyes are (near a chat box, a search bar)
 and it stays there. Drag it back near the notch and it snaps home, or use **Dock Back to Notch**
 in the menu.

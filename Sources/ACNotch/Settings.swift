@@ -34,6 +34,12 @@ final class Settings {
         set { defaults.set(newValue, forKey: "previewNotch") }
     }
 
+    /// Show the strip next to the text cursor instead of on the notch.
+    var followCaret: Bool {
+        get { defaults.object(forKey: "followCaret") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "followCaret") }
+    }
+
     /// Where the strip was dropped after being dragged off the notch; nil while docked.
     var floatingCenter: NSPoint? {
         get {

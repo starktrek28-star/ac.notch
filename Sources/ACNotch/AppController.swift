@@ -72,7 +72,11 @@ final class AppController: NSObject {
         autocorrect.state = settings.autocorrect ? .on : .off
         menu.addItem(autocorrect)
 
-        if notch.isFloating {
+        let follow = item("Follow Text Cursor", #selector(toggleFollowCaret))
+        follow.state = settings.followCaret ? .on : .off
+        menu.addItem(follow)
+
+        if !settings.followCaret, notch.isFloating {
             menu.addItem(item("Dock Back to Notch", #selector(dockToNotch)))
         }
 
@@ -125,6 +129,12 @@ final class AppController: NSObject {
 
     @objc private func toggleAutocorrect() {
         settings.autocorrect.toggle()
+        refresh()
+    }
+
+    @objc private func toggleFollowCaret() {
+        settings.followCaret.toggle()
+        notch.hide()
         refresh()
     }
 
