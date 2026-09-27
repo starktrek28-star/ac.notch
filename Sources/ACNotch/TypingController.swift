@@ -10,6 +10,8 @@ final class TypingController {
     var onToggleHotkey: (() -> Void)?
     var onHomeHotkey: (() -> Void)?
 
+    /// How long the strip stays after typing stops: about four blinks of the text cursor.
+    private let idleFade: TimeInterval = 4
     private let suggester = Suggester()
     private let underline = UnderlineOverlay()
     private var tap: CFMachPort?
@@ -47,14 +49,28 @@ final class TypingController {
         return true
     }
 
-    func reset() {
+    /// Forget the word in progress. A hard reset (click elsewhere, a shortcut, switching off)
+    /// hides the strip at once; a soft one (Return, arrows, other punctuation) leaves it up,
+    /// showing what was just typed, until typing pauses.
+    func reset(soft: Bool = false) {
+        let word = buffer
+        let trusted = trust == .trusted
         currentOptions = []
         revertOffer = nil
         buffer = ""
         trust = .unknown
         lastCorrection = nil
-        notch.hide()
-        notch.clearTrail()
+        guard soft else {
+            notch.hide()
+            notch.clearTrail()
+            return
+        }
+        if trusted, !word.isEmpty {
+            notch.commitWord(word)
+            notch.show([], hideAfter: idleFade)
+        } else {
+            notch.hide(after: idleFade)
+        }
     }
 
     // MARK: - Event handling
@@ -67,7 +83,7 @@ final class TypingController {
             return pass
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             // Clicking a suggestion must not throw away the word we're about to replace.
-            if !notch.contains(NSEvent.mouseLocation) { reset() }
+            if !notch.contains(NSEvent.mouseLocation) { reset(soft: true) }
             return pass
         case .keyDown:
             return handleKey(event) ? pass : nil
@@ -102,7 +118,7 @@ final class TypingController {
         }
 
         if flags.contains(.maskCommand) || flags.contains(.maskControl) {
-            reset()
+            reset(soft: true)
             return true
         }
 
@@ -117,16 +133,19 @@ final class TypingController {
         revertOffer = nil
 
         switch keyCode {
-        // Return, Enter, Tab, Escape, Home, PageUp, ForwardDelete, End, PageDown, arrows
-        case 36, 76, 48, 53, 115, 116, 117, 119, 121, 123, 124, 125, 126:
+        case 53:   // Escape
             reset()
+            return true
+        // Return, Enter, Tab, Home, PageUp, ForwardDelete, End, PageDown, arrows
+        case 36, 76, 48, 115, 116, 117, 119, 121, 123, 124, 125, 126:
+            reset(soft: true)
             return true
         default:
             break
         }
 
         guard let text = event.typedText, text.count == 1, let character = text.first else {
-            reset()
+            reset(soft: true)
             return true
         }
 
@@ -135,7 +154,7 @@ final class TypingController {
                 trust = (AXProbe.cursorIsAtWordStart() ?? true) ? .trusted : .untrusted
             }
             buffer.append(character)
-            if trust == .trusted { refreshStrip() } else { notch.hide() }
+            if trust == .trusted { refreshStrip() } else { notch.hide(after: idleFade) }
             return true
         }
 
@@ -143,7 +162,7 @@ final class TypingController {
             return finishWord(boundary: text)
         }
 
-        reset()
+        reset(soft: true)   // other punctuation: the word ends, the strip stays
         return true
     }
 
@@ -160,7 +179,7 @@ final class TypingController {
                 StripOption(text: correction.corrected, kind: .info, highlighted: true),
                 StripOption(text: correction.original, kind: .original, quoted: true, acceptsTab: true),
             ]
-            notch.show(currentOptions, hideAfter: 4)
+            notch.show(currentOptions, hideAfter: idleFade)
             return true
         }
         revertOffer = nil
@@ -168,10 +187,10 @@ final class TypingController {
             // We've backed into the previous word, whose start we can't be sure of.
             trust = .unknown
             notch.uncommitWord()
-            notch.show([], hideAfter: 6)
+            notch.show([], hideAfter: idleFade)
         } else {
             buffer.removeLast()
-            if buffer.isEmpty || trust != .trusted { notch.hide() } else { refreshStrip() }
+            if buffer.isEmpty || trust != .trusted { notch.hide(after: idleFade) } else { refreshStrip() }
         }
         return true
     }
@@ -189,9 +208,9 @@ final class TypingController {
             // The finished word joins the trail; the strip fades once typing pauses.
             if wasTrusted, !word.isEmpty {
                 notch.commitWord(word)
-                notch.show([], hideAfter: 6)
+                notch.show([], hideAfter: idleFade)
             } else {
-                notch.hide(after: 3)
+                notch.hide(after: idleFade)
             }
             return true
         }
@@ -200,7 +219,7 @@ final class TypingController {
         Typist.type(corrected + boundary)
         lastCorrection = (word, corrected, boundary)
         notch.commitWord(corrected)
-        notch.show([], hideAfter: 6)
+        notch.show([], hideAfter: idleFade)
 
         // Briefly underline the corrected word once the app has drawn it.
         let length = corrected.utf16.count, offset = length + boundary.utf16.count
@@ -213,7 +232,7 @@ final class TypingController {
     }
 
     private func refreshStrip() {
-        guard !buffer.isEmpty else { notch.hide(); return }
+        guard !buffer.isEmpty else { notch.hide(after: idleFade); return }
         currentOptions = suggester.analyze(buffer).options
         notch.show(currentOptions)
     }
@@ -230,7 +249,7 @@ final class TypingController {
         buffer = offer.original
         trust = .trusted
         currentOptions = [StripOption(text: offer.original, kind: .typed, highlighted: true)]
-        notch.show(currentOptions, hideAfter: 3)
+        notch.show(currentOptions, hideAfter: idleFade)
     }
 
     /// A suggestion was clicked in the strip.
@@ -247,14 +266,14 @@ final class TypingController {
             Typist.type(" ")
             notch.commitWord(buffer)
             buffer = ""
-            notch.show([], hideAfter: 6)
+            notch.show([], hideAfter: idleFade)
         case .correction, .suggestion:
             guard !buffer.isEmpty, trust == .trusted else { return }
             Typist.backspace(buffer.count)
             Typist.type(option.text + " ")
             notch.commitWord(option.text)
             buffer = ""
-            notch.show([], hideAfter: 6)
+            notch.show([], hideAfter: idleFade)
         }
     }
 

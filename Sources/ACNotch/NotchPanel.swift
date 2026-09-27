@@ -357,9 +357,10 @@ final class NotchController {
 
     /// The word being typed is done: it joins the running text in the ticker (as `text`).
     func commitWord(_ text: String) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            model.trail.append(TrailWord(id: model.currentID, text: text))
-            if model.trail.count > 1 { model.trail.removeFirst(model.trail.count - 1) }   // just the last word
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            model.trail = [TrailWord(id: model.currentID, text: text)]   // just the last word
             model.currentID += 1
             model.options = []
         }
@@ -368,7 +369,9 @@ final class NotchController {
     /// Backspacing into the last word: take it back out of the trail.
     func uncommitWord() {
         guard let last = model.trail.last else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
             model.trail.removeLast()
             model.currentID = last.id
         }
@@ -383,9 +386,19 @@ final class NotchController {
         hideWork?.cancel()
         showToken += 1
         guard !options.isEmpty || !model.trail.isEmpty else { hide(); return }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-            model.options = options
-            model.tickerWidth = tickerWidth
+        // Words change instantly, like typing itself; only the original-word pill popping out
+        // beside the ticker is animated.
+        let popsOut = options.count > 1 && model.options.count <= 1
+        let update = {
+            self.model.options = options
+            self.model.tickerWidth = self.tickerWidth
+        }
+        if popsOut {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.72), update)
+        } else {
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant, update)
         }
         if let delay { hide(after: delay) }
 
