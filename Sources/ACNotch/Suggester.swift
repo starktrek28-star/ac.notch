@@ -14,8 +14,12 @@ struct StripOption: Equatable {
     var kind: Kind
     var highlighted = false
     var quoted = false
+    /// Pressing Tab picks this option.
+    var acceptsTab = false
 
     var label: String { quoted ? "\u{201C}\(text)\u{201D}" : text }
+    /// What's drawn, including the small Tab hint.
+    var displayText: String { acceptsTab ? label + " \u{21E5}" : label }
 }
 
 struct Analysis {
@@ -90,12 +94,12 @@ final class Suggester {
         var options: [StripOption]
         if let autocorrection {
             options = [
-                StripOption(text: autocorrection, kind: .correction, highlighted: true),
+                StripOption(text: autocorrection, kind: .correction, highlighted: true, acceptsTab: true),
                 StripOption(text: word, kind: .typed, quoted: true),
             ]
         } else {
             options = [StripOption(text: word, kind: .typed, highlighted: true, quoted: misspelled)]
-            if let other = extras.first { options.append(StripOption(text: other, kind: .suggestion)) }
+            if let other = extras.first { options.append(StripOption(text: other, kind: .suggestion, acceptsTab: true)) }
         }
         return Analysis(options: options, autocorrection: autocorrection)
     }

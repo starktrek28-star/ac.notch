@@ -113,7 +113,10 @@ struct StripView: View {
 
     @ViewBuilder
     private func slot(_ option: StripOption) -> some View {
-        let text = Text(option.label)
+        let text = (Text(option.label)
+                    + Text(option.acceptsTab ? " \u{21E5}" : "")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.white.opacity(0.5)))
             .font(.system(size: 13, weight: option.highlighted ? .semibold : .regular))
             .foregroundColor(.white)
             .lineLimit(1)
@@ -198,7 +201,7 @@ final class NotchController {
         let count = max(model.options.count, 1)
         let widest = model.options.map { option -> CGFloat in
             let font = NSFont.systemFont(ofSize: 13, weight: option.highlighted ? .semibold : .regular)
-            return (option.label as NSString).size(withAttributes: [.font: font]).width
+            return (option.displayText as NSString).size(withAttributes: [.font: font]).width
         }.max() ?? 0
         let slot = ceil(widest) + 24
         return min(max(CGFloat(count) * slot + CGFloat(count - 1) + 16 + 12, 110), 330)

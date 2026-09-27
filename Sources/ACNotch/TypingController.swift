@@ -13,6 +13,8 @@ final class TypingController {
     private let suggester = Suggester()
     private var tap: CFMachPort?
     private var buffer = ""
+    /// What the strip is showing for the word being typed.
+    private var currentOptions: [StripOption] = []
     private var trust: Trust = .unknown
     private var lastCorrection: (original: String, corrected: String, boundary: String)?
 
@@ -43,6 +45,7 @@ final class TypingController {
     }
 
     func reset() {
+        currentOptions = []
         buffer = ""
         trust = .unknown
         lastCorrection = nil
@@ -101,6 +104,14 @@ final class TypingController {
         if keyCode == 51 { return handleBackspace() }
         lastCorrection = nil
 
+        // Tab takes the suggestion (like Gmail's Smart Compose), when there is one for this word.
+        if keyCode == 48, !flags.contains(.maskShift), !flags.contains(.maskAlternate),
+           trust == .trusted, !buffer.isEmpty,
+           let suggestion = currentOptions.first(where: { $0.acceptsTab }) {
+            pick(suggestion)
+            return false
+        }
+
         switch keyCode {
         // Return, Enter, Tab, Escape, Home, PageUp, ForwardDelete, End, PageDown, arrows
         case 36, 76, 48, 53, 115, 116, 117, 119, 121, 123, 124, 125, 126:
@@ -154,6 +165,7 @@ final class TypingController {
         let word = buffer
         let wasTrusted = trust == .trusted
         buffer = ""
+        currentOptions = []
         trust = .trusted
 
         guard wasTrusted, !word.isEmpty, Settings.shared.autocorrect,
@@ -175,7 +187,8 @@ final class TypingController {
 
     private func refreshStrip() {
         guard !buffer.isEmpty else { notch.hide(); return }
-        notch.show(suggester.analyze(buffer).options)
+        currentOptions = suggester.analyze(buffer).options
+        notch.show(currentOptions)
     }
 
     // MARK: - Actions

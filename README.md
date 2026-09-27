@@ -25,6 +25,7 @@ in the menu.
 Macs without a notch get a notch-shaped pill instead (`“teh” | the`), or turn on
 **Preview Notch Layout** in the menu to see the wings around a pretend notch.
 
+- Press **Tab** to take the suggestion (marked ⇥), like Gmail's Smart Compose.
 - Press **space** or punctuation and a misspelled word is fixed automatically.
 - Press **backspace** straight after a fix to undo it.
 - **Click** a suggestion to use it.
