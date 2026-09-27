@@ -246,9 +246,10 @@ final class NotchController {
             reveal()
             return
         }
-        // Look up the caret after the keystroke has been handed on, so typing never waits on it.
+        // Look up the caret a moment after the keystroke, once the app has moved it,
+        // so typing never waits on the lookup.
         let token = showToken
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, self.showToken == token else { return }
             if !self.placeAtCaret() { self.place() }
             self.reveal()
@@ -308,13 +309,14 @@ final class NotchController {
 
     // MARK: - Placement
 
-    /// Puts the strip just above or below the text cursor, whichever side has more room.
+    /// Puts the strip a short gap above or below the text cursor, whichever side has more room,
+    /// centred on it so the main word sits right over the caret.
     /// Returns false when the focused app doesn't report a cursor position.
     private func placeAtCaret() -> Bool {
         guard drag == nil, let caret = CaretLocator.caretRect(),
               let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }
         let area = screen.visibleFrame
-        let gap: CGFloat = 10
+        let gap: CGFloat = 18
         let needed = pillHeight + gap
         let spaceBelow = caret.minY - area.minY
         let spaceAbove = area.maxY - caret.maxY
@@ -324,14 +326,8 @@ final class NotchController {
         belowCaret = below
 
         let y = below ? caret.minY - gap - pillHeight / 2 : caret.maxY + gap + pillHeight / 2
-        var x = caret.midX
-        // While typing along the same line, stay put until the caret nears the strip's edge.
-        let current = panel.frame
-        if panel.isVisible, model.layout == .floating, abs(current.midY - y) < 2,
-           abs(caret.midX - current.midX) < floatWidth / 2 - 40 {
-            x = current.midX
-        }
-        x = min(max(x, area.minX + floatWidth / 2 + 8), area.maxX - floatWidth / 2 - 8)
+        // Glide along with the caret so the main word stays right where the eyes are.
+        let x = min(max(caret.midX, area.minX + floatWidth / 2 + 8), area.maxX - floatWidth / 2 - 8)
 
         setLayout(.floating)
         move(to: floatingFrame(center: NSPoint(x: x, y: y)), animated: panel.isVisible && panel.alphaValue > 0)
