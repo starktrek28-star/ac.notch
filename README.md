@@ -24,7 +24,7 @@ frosted-glass pill. Drop it wherever your eyes are (near a chat box, a search ba
 and it stays there. Drag it back near the notch and it snaps home, or use **Dock Back to Notch**
 in the menu.
 
-Macs without a notch get a notch-shaped pill instead (`“teh” | the`), or turn on
+Macs without a notch get a notch-shaped pill instead (`the`), or turn on
 **Preview Notch Layout** in the menu to see the wings around a pretend notch.
 
 - Press **space** or punctuation and a misspelled word is fixed automatically.
