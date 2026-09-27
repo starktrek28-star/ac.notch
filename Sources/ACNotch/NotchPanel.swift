@@ -359,7 +359,7 @@ final class NotchController {
     func commitWord(_ text: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             model.trail.append(TrailWord(id: model.currentID, text: text))
-            if model.trail.count > 6 { model.trail.removeFirst(model.trail.count - 6) }
+            if model.trail.count > 1 { model.trail.removeFirst(model.trail.count - 1) }   // just the last word
             model.currentID += 1
             model.options = []
         }

@@ -2,7 +2,7 @@
 
 iPhone-style autocorrect for the Mac. While you type in any app, a small ticker pill hovers by
 your cursor showing your running text: the word you're typing at its right end, right over the
-cursor (greyed when it's about to be fixed), and earlier words scrolling off the left edge,
+cursor (greyed when it's about to be fixed), and the previous word fading off the left edge,
 like `( …est  car )`. Press space and a typo is simply fixed, like on
 iPhone, and the fixed word is briefly underlined. Changed your mind? Press **backspace** and a second pill pops out with what you
 actually typed (`the` `“teh” ⇥`); press **Tab** (or click it) to put it back. Put a word back
