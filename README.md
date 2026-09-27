@@ -12,7 +12,9 @@ word (what space will type) on the left, the two alternatives on the right.
 capsule right next to the blinking cursor: below it when you're typing near the top of the
 screen (a browser's search bar), above it near the bottom (a chat box). The cursor is its
 home: if it's ever in the way, drag it somewhere else and it stays there until you press
-**⌃⌥H** (Control + Option + H), which sends it gliding back to the cursor. Turn off
+**⌃⌥H** (Control + Option + H), which sends it gliding back to the cursor. In a browser's
+address bar it sits on the notch instead, and never autocorrects there, since words are often
+web addresses. Turn off
 **Follow Text Cursor** in the menu to keep it on the notch instead.
 
 **On the notch, drag it anywhere.** Pull the strip off the notch and it breaks free into a floating,

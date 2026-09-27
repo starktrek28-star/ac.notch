@@ -277,7 +277,11 @@ final class NotchController {
         let token = showToken
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, self.showToken == token else { return }
-            if !self.placeAtCaret() { self.place() }
+            // In a browser's address bar the strip sits on the notch instead of following.
+            if CaretLocator.focusIsAddressBar() || !self.placeAtCaret() {
+                self.stopSpring()
+                self.place()
+            }
             self.reveal()
         }
     }
