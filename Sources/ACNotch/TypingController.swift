@@ -54,6 +54,7 @@ final class TypingController {
         trust = .unknown
         lastCorrection = nil
         notch.hide()
+        notch.clearTrail()
     }
 
     // MARK: - Event handling
@@ -154,6 +155,7 @@ final class TypingController {
             revertOffer = (correction.original, correction.corrected)
             buffer = correction.corrected
             trust = .trusted
+            notch.uncommitWord()
             currentOptions = [
                 StripOption(text: correction.corrected, kind: .info, highlighted: true),
                 StripOption(text: correction.original, kind: .original, quoted: true, acceptsTab: true),
@@ -163,9 +165,10 @@ final class TypingController {
         }
         revertOffer = nil
         if buffer.isEmpty {
-            // We've backed into text we never saw.
+            // We've backed into the previous word, whose start we can't be sure of.
             trust = .unknown
-            notch.hide()
+            notch.uncommitWord()
+            notch.show([], hideAfter: 3)
         } else {
             buffer.removeLast()
             if buffer.isEmpty || trust != .trusted { notch.hide() } else { refreshStrip() }
@@ -183,14 +186,21 @@ final class TypingController {
         guard wasTrusted, !word.isEmpty, Settings.shared.autocorrect,
               let corrected = suggester.analyze(word).autocorrection, corrected != word,
               !CaretLocator.focusIsAddressBar() else {
-            notch.hide(after: 3)   // stay up between words; only fade once typing pauses
+            // The finished word joins the trail; the strip fades once typing pauses.
+            if wasTrusted, !word.isEmpty {
+                notch.commitWord(word)
+                notch.show([], hideAfter: 3)
+            } else {
+                notch.hide(after: 3)
+            }
             return true
         }
 
         Typist.backspace(word.count)
         Typist.type(corrected + boundary)
         lastCorrection = (word, corrected, boundary)
-        notch.show([StripOption(text: corrected, kind: .info, highlighted: true)], hideAfter: 3)
+        notch.commitWord(corrected)
+        notch.show([], hideAfter: 3)
 
         // Briefly underline the corrected word once the app has drawn it.
         let length = corrected.utf16.count, offset = length + boundary.utf16.count
@@ -235,14 +245,16 @@ final class TypingController {
             guard !buffer.isEmpty, trust == .trusted else { return }
             suggester.ignore(buffer)
             Typist.type(" ")
+            notch.commitWord(buffer)
             buffer = ""
-            notch.hide()
+            notch.show([], hideAfter: 3)
         case .correction, .suggestion:
             guard !buffer.isEmpty, trust == .trusted else { return }
             Typist.backspace(buffer.count)
             Typist.type(option.text + " ")
+            notch.commitWord(option.text)
             buffer = ""
-            notch.hide()
+            notch.show([], hideAfter: 3)
         }
     }
 

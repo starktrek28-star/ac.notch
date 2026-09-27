@@ -2,9 +2,19 @@ import AppKit
 import SwiftUI
 
 final class StripModel: ObservableObject {
+    /// The pills for the word being typed (the word, plus the original on offer after a backspace).
     @Published var options: [StripOption] = []
+    /// Words already typed, oldest first. They slide off to the left as new words arrive.
+    @Published var trail: [TrailWord] = []
+    /// Identifies the word being typed, so its pill glides into the trail instead of popping.
+    @Published var currentID = 0
     @Published var layout: StripLayout = .pill
     var onPick: ((StripOption) -> Void)?
+}
+
+struct TrailWord: Equatable {
+    let id: Int
+    let text: String
 }
 
 /// Black shape hanging from the top of the screen: square top, rounded bottom.
@@ -44,17 +54,22 @@ struct StripView: View {
         Group {
             switch model.layout {
             case .floating:
-                // Separate pills side by side; a second one pops out of the first.
+                // The autocorrect trail: earlier words fade off to the left, the word being typed
+                // sits at the cursor, and the original pops out beside it after a backspace.
                 HStack(spacing: 6) {
+                    ForEach(Array(model.trail.enumerated()), id: \.element.id) { index, word in
+                        pill(StripOption(text: word.text, kind: .info))
+                            .opacity(index == model.trail.count - 1 ? 0.6 : 0.3)
+                            .transition(.asymmetric(insertion: .opacity,
+                                                    removal: .move(edge: .leading).combined(with: .opacity)))
+                    }
                     ForEach(Array(model.options.enumerated()), id: \.offset) { index, option in
-                        slot(option)
-                            .fixedSize()
-                            .padding(.horizontal, 4)
-                            .frame(height: 30)
-                            .background(glassCapsule)
+                        pill(option)
+                            .id(index == 0 ? model.currentID : -1 - index)
                             .transition(.scale(scale: 0.4, anchor: .leading).combined(with: .opacity))
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             case .pill:
                 // iPhone order: the main word sits in the middle slot.
                 HStack(spacing: 0) {
@@ -111,6 +126,14 @@ struct StripView: View {
         }
     }
 
+    private func pill(_ option: StripOption) -> some View {
+        slot(option)
+            .fixedSize()
+            .padding(.horizontal, 4)
+            .frame(height: 30)
+            .background(glassCapsule)
+    }
+
     /// Frosted dark glass rather than a solid slab of black.
     private var glassCapsule: some View {
         ZStack {
@@ -142,7 +165,7 @@ struct StripView: View {
             .frame(height: 22)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(option.highlighted ? Color.white.opacity(0.2) : Color.clear)
+                    .fill(option.highlighted ? Color.white.opacity(0.28) : Color.clear)
             )
             .contentShape(Rectangle())
 
@@ -212,14 +235,30 @@ final class NotchController {
     /// The docked pill (Macs without a notch) keeps a notch-like minimum width.
     private var pillWidth: CGFloat { max(floatWidth, 200) }
     private let wingWidth: CGFloat = 170
-    /// Width of one pill per option, each sized to its word, 6 pt apart.
-    private var floatWidth: CGFloat {
-        let pills = model.options.map { option -> CGFloat in
-            let font = NSFont.systemFont(ofSize: 13, weight: option.highlighted ? .semibold : .regular)
-            return ceil((option.displayText as NSString).size(withAttributes: [.font: font]).width) + 16 + 8 + 4
+    private func pillWidth(_ text: String, bold: Bool = false) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 13, weight: bold ? .semibold : .regular)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 16 + 8 + 6
+    }
+
+    private var trailWidth: CGFloat {
+        model.trail.map { pillWidth($0.text) + 6 }.reduce(0, +)
+    }
+
+    private var optionsWidth: CGFloat {
+        let widths = model.options.map { pillWidth($0.displayText, bold: $0.highlighted) }
+        return widths.reduce(0, +) + 6 * CGFloat(max(widths.count - 1, 0))
+    }
+
+    /// The whole trail plus the current pills, 6 pt apart.
+    private var floatWidth: CGFloat { max(trailWidth + optionsWidth + 4, 40) }
+
+    /// Distance from the strip's left edge to the point that should sit over the caret:
+    /// the middle of the current word's pill, or just past the trail between words.
+    private var caretAnchor: CGFloat {
+        if let first = model.options.first {
+            return trailWidth + pillWidth(first.displayText, bold: first.highlighted) / 2
         }
-        let total = pills.reduce(0, +) + 6 * CGFloat(max(pills.count - 1, 0)) + 4
-        return min(max(total, 60), 360)
+        return trailWidth + 4
     }
 
     /// How far you pull before it breaks away from the notch.
@@ -271,7 +310,7 @@ final class NotchController {
     func returnHome() {
         parkedCenter = nil
         onDockChange?()
-        if panel.isVisible, panel.alphaValue > 0, !model.options.isEmpty {
+        if panel.isVisible, panel.alphaValue > 0, !(model.options.isEmpty && model.trail.isEmpty) {
             if !placeAtCaret() { place() }
             hide(after: 2.5)
         } else {
@@ -279,14 +318,41 @@ final class NotchController {
         }
     }
 
+    /// The word being typed is done: its pill joins the trail (showing `text`) and older
+    /// words slide away, keeping the last two.
+    func commitWord(_ text: String) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            model.trail.append(TrailWord(id: model.currentID, text: text))
+            if model.trail.count > 2 { model.trail.removeFirst(model.trail.count - 2) }
+            model.currentID += 1
+            model.options = []
+        }
+    }
+
+    /// Backspacing into the last word: take it back out of the trail.
+    func uncommitWord() {
+        guard let last = model.trail.last else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            model.trail.removeLast()
+            model.currentID = last.id
+        }
+    }
+
+    func clearTrail() {
+        model.trail = []
+        model.currentID += 1
+    }
+
     func show(_ options: [StripOption], hideAfter delay: TimeInterval? = nil) {
         hideWork?.cancel()
         showToken += 1
-        guard !options.isEmpty else { hide(); return }
+        guard !options.isEmpty || !model.trail.isEmpty else { hide(); return }
         withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { model.options = options }
         if let delay { hide(after: delay) }
 
         guard Settings.shared.followCaret else {
+            // The trail only lives by the cursor; on the notch, show just the current word.
+            if options.isEmpty { hide(); return }
             place()
             reveal()
             return
@@ -307,6 +373,7 @@ final class NotchController {
             guard let self, self.showToken == token else { return }
             // In a browser's address bar the strip sits on the notch instead of following.
             if CaretLocator.focusIsAddressBar() || !self.placeAtCaret() {
+                if self.model.options.isEmpty { self.hide(); return }
                 self.stopSpring()
                 self.place()
             }
@@ -362,6 +429,7 @@ final class NotchController {
             guard let self, self.panel.alphaValue == 0 else { return }
             self.stopSpring()
             self.panel.orderOut(nil)
+            self.clearTrail()
         })
     }
 
@@ -384,11 +452,13 @@ final class NotchController {
         belowCaret = below
 
         let y = below ? caret.minY - gap - pillHeight / 2 : caret.maxY + gap + pillHeight / 2
-        // Glide along with the caret so the main word stays right where the eyes are.
-        let x = min(max(caret.midX, area.minX + floatWidth / 2 + 8), area.maxX - floatWidth / 2 - 8)
+        // Glide along with the caret: the current word's pill sits right over it, the trail to its left.
+        let width = floatWidth
+        let left = min(max(caret.midX - caretAnchor, area.minX + 8), area.maxX - width - 8)
 
         setLayout(.floating)
-        move(to: floatingFrame(center: NSPoint(x: x, y: y)), animated: panel.isVisible && panel.alphaValue > 0)
+        move(to: NSRect(x: left, y: y - pillHeight / 2, width: width, height: pillHeight),
+             animated: panel.isVisible && panel.alphaValue > 0)
         return true
     }
 
@@ -480,7 +550,7 @@ final class NotchController {
             guard var d = drag else { return event }
             let dx = mouse.x - d.startMouse.x, dy = mouse.y - d.startMouse.y
             let distance = hypot(dx, dy)
-            if !d.moved && distance < 4 { return event }
+            if !d.moved && distance < (following ? 16 : 4) { return event }
             d.moved = true
 
             if !d.detached {
