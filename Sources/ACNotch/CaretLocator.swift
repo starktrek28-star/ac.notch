@@ -20,8 +20,46 @@ enum CaretLocator {
         if let rect = selectionBounds(focused) ?? webCaretBounds(focused) { return toCocoa(rect) }
 
         wakeAccessibility(for: focused)
-        if let field = frame(of: focused), field.height > 0, field.height < 200 { return toCocoa(field) }
-        return nil
+        guard let field = frame(of: focused), field.height > 0, field.height < 200 else { return nil }
+        // Single-line fields that won't say where the caret is (like a browser's address bar):
+        // estimate it from the text before the caret so the strip still moves as you type.
+        if field.height < 50, let x = estimatedCaretX(in: focused, field: field) {
+            return toCocoa(CGRect(x: x, y: field.minY, width: 1, height: field.height))
+        }
+        return toCocoa(field)
+    }
+
+    /// True when typing is going into a browser's address bar, where words are often web
+    /// addresses and must never be autocorrected.
+    static func focusIsAddressBar() -> Bool {
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.05)
+        guard let focused = element(system, kAXFocusedUIElementAttribute) else { return false }
+        let clues = [kAXIdentifierAttribute, kAXDescriptionAttribute, kAXTitleAttribute, kAXPlaceholderValueAttribute]
+            .compactMap { string(focused, $0)?.lowercased() }
+        return clues.contains { $0.contains("address") || $0.contains("url") || $0.contains("location bar") }
+    }
+
+    private static func estimatedCaretX(in element: AXUIElement, field: CGRect) -> CGFloat? {
+        guard let text = string(element, kAXValueAttribute) else { return nil }
+        var rangeRef: CFTypeRef?
+        var selection = CFRange(location: (text as NSString).length, length: 0)
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+           let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() {
+            AXValueGetValue(rangeRef as! AXValue, .cfRange, &selection)
+        }
+        let prefix = (text as NSString).substring(to: min(max(selection.location, 0), (text as NSString).length))
+        let fontSize = min(max(field.height * 0.45, 12), 16)
+        let width = (prefix as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: fontSize)]).width
+        // Leave room for the icon most address and search fields show on their left.
+        let inset = min(field.height, 36)
+        return min(field.minX + inset + width, field.maxX - 8)
+    }
+
+    private static func string(_ element: AXUIElement, _ attribute: String) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success else { return nil }
+        return ref as? String
     }
 
     private static func selectionBounds(_ element: AXUIElement) -> CGRect? {

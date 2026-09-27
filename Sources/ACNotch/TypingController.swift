@@ -157,7 +157,8 @@ final class TypingController {
         trust = .trusted
 
         guard wasTrusted, !word.isEmpty, Settings.shared.autocorrect,
-              let corrected = suggester.analyze(word).autocorrection, corrected != word else {
+              let corrected = suggester.analyze(word).autocorrection, corrected != word,
+              !CaretLocator.focusIsAddressBar() else {
             notch.hide(after: 0.6)
             return true
         }
