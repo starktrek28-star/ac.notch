@@ -168,7 +168,7 @@ final class TypingController {
             // We've backed into the previous word, whose start we can't be sure of.
             trust = .unknown
             notch.uncommitWord()
-            notch.show([], hideAfter: 3)
+            notch.show([], hideAfter: 6)
         } else {
             buffer.removeLast()
             if buffer.isEmpty || trust != .trusted { notch.hide() } else { refreshStrip() }
@@ -189,7 +189,7 @@ final class TypingController {
             // The finished word joins the trail; the strip fades once typing pauses.
             if wasTrusted, !word.isEmpty {
                 notch.commitWord(word)
-                notch.show([], hideAfter: 3)
+                notch.show([], hideAfter: 6)
             } else {
                 notch.hide(after: 3)
             }
@@ -200,7 +200,7 @@ final class TypingController {
         Typist.type(corrected + boundary)
         lastCorrection = (word, corrected, boundary)
         notch.commitWord(corrected)
-        notch.show([], hideAfter: 3)
+        notch.show([], hideAfter: 6)
 
         // Briefly underline the corrected word once the app has drawn it.
         let length = corrected.utf16.count, offset = length + boundary.utf16.count
@@ -247,14 +247,14 @@ final class TypingController {
             Typist.type(" ")
             notch.commitWord(buffer)
             buffer = ""
-            notch.show([], hideAfter: 3)
+            notch.show([], hideAfter: 6)
         case .correction, .suggestion:
             guard !buffer.isEmpty, trust == .trusted else { return }
             Typist.backspace(buffer.count)
             Typist.type(option.text + " ")
             notch.commitWord(option.text)
             buffer = ""
-            notch.show([], hideAfter: 3)
+            notch.show([], hideAfter: 6)
         }
     }
 

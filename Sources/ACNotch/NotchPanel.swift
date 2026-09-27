@@ -315,6 +315,8 @@ final class NotchController {
     private var belowCaret: Bool?
     /// Where the strip was dragged to while following the cursor; nil when it's home.
     private var parkedCenter: NSPoint?
+    /// When the caret itself (not just its text field) was last found.
+    private var lastPreciseCaret = Date.distantPast
     private var suppressPick = false
     private var mouseMonitor: Any?
 
@@ -476,8 +478,15 @@ final class NotchController {
     /// centred on it so the main word sits right over the caret.
     /// Returns false when the focused app doesn't report a cursor position.
     private func placeAtCaret() -> Bool {
-        guard drag == nil, let caret = CaretLocator.caretRect(),
-              let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }
+        guard drag == nil else { return false }
+        let showing = panel.isVisible && panel.alphaValue > 0 && model.layout == .floating
+        // A lookup can miss for a moment (a web page mid-update, a space with no width yet).
+        // If the strip is already out, leave it where it is rather than hiding or jumping.
+        guard let found = CaretLocator.caret() else { return showing }
+        if !found.precise, showing, Date().timeIntervalSince(lastPreciseCaret) < 5 { return true }
+        if found.precise { lastPreciseCaret = Date() }
+        let caret = found.rect
+        guard let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }
         let area = screen.visibleFrame
         let gap: CGFloat = 18
         let needed = pillHeight + gap
