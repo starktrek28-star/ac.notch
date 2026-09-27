@@ -377,6 +377,14 @@ final class NotchController {
         }
     }
 
+    /// For the notch layouts, which have no ticker: an empty strip shows the last word typed.
+    private func showLastWordIfEmpty() {
+        guard model.options.isEmpty, let last = model.trail.last else { return }
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { model.options = [StripOption(text: last.text, kind: .info)] }
+    }
+
     func clearTrail() {
         model.trail = []
         model.currentID += 1
@@ -403,8 +411,8 @@ final class NotchController {
         if let delay { hide(after: delay) }
 
         guard Settings.shared.followCaret else {
-            // The trail only lives by the cursor; on the notch, show just the current word.
-            if options.isEmpty { hide(); return }
+            // On the notch there's no ticker: between words, keep showing the word just typed.
+            showLastWordIfEmpty()
             place()
             reveal()
             return
@@ -425,7 +433,7 @@ final class NotchController {
             guard let self, self.showToken == token else { return }
             // In a browser's address bar the strip sits on the notch instead of following.
             if CaretLocator.focusIsAddressBar() || !self.placeAtCaret() {
-                if self.model.options.isEmpty { self.hide(); return }
+                self.showLastWordIfEmpty()
                 self.stopSpring()
                 self.place()
             }
