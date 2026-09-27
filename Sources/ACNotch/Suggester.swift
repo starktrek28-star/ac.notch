@@ -85,21 +85,17 @@ final class Suggester {
             .map { matchCase($0, to: word) }
             .filter { seen.insert($0.lowercased()).inserted }
 
-        // At most two options, and only when they're worth a glance: suggestions cost
-        // attention, so a correctly spelled word shows nothing unless completions are on.
-        var options: [StripOption] = []
+        // Always two options (one if there's nothing else to offer). The first is the main
+        // one: what space gives you, highlighted.
+        var options: [StripOption]
         if let autocorrection {
             options = [
                 StripOption(text: autocorrection, kind: .correction, highlighted: true),
                 StripOption(text: word, kind: .typed, quoted: true),
             ]
-        } else if misspelled, let guess = extras.first {
-            options = [
-                StripOption(text: guess, kind: .suggestion),
-                StripOption(text: word, kind: .typed, quoted: true),
-            ]
-        } else if !misspelled, Settings.shared.showCompletions, let completion = extras.first {
-            options = [StripOption(text: completion, kind: .suggestion)]
+        } else {
+            options = [StripOption(text: word, kind: .typed, highlighted: true, quoted: misspelled)]
+            if let other = extras.first { options.append(StripOption(text: other, kind: .suggestion)) }
         }
         return Analysis(options: options, autocorrection: autocorrection)
     }

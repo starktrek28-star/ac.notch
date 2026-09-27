@@ -73,10 +73,6 @@ final class AppController: NSObject {
         autocorrect.state = settings.autocorrect ? .on : .off
         menu.addItem(autocorrect)
 
-        let completions = item("Suggest Word Completions", #selector(toggleCompletions))
-        completions.state = settings.showCompletions ? .on : .off
-        menu.addItem(completions)
-
         let follow = item("Follow Text Cursor", #selector(toggleFollowCaret))
         follow.state = settings.followCaret ? .on : .off
         menu.addItem(follow)
@@ -141,11 +137,6 @@ final class AppController: NSObject {
         refresh()
     }
 
-    @objc private func toggleCompletions() {
-        settings.showCompletions.toggle()
-        refresh()
-    }
-
     @objc private func returnToCursor() {
         notch.returnHome()
     }
@@ -183,8 +174,8 @@ final class AppController: NSObject {
         let alert = NSAlert()
         alert.messageText = "AC Notch"
         alert.informativeText = """
-        When you misspell a word, two options appear by your cursor: \
-        what you typed | the fix.
+        While you type, two options hover by your cursor: \
+        what you typed | the fix or a completion.
 
         • Press space or punctuation and a misspelled word is fixed automatically.
         • Press backspace straight after a fix to undo it.

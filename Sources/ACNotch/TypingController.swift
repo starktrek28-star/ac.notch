@@ -159,7 +159,7 @@ final class TypingController {
         guard wasTrusted, !word.isEmpty, Settings.shared.autocorrect,
               let corrected = suggester.analyze(word).autocorrection, corrected != word,
               !CaretLocator.focusIsAddressBar() else {
-            notch.hide(after: 0.6)
+            notch.hide(after: 3)   // stay up between words; only fade once typing pauses
             return true
         }
 
@@ -169,7 +169,7 @@ final class TypingController {
         notch.show([
             StripOption(text: corrected, kind: .info, highlighted: true),
             StripOption(text: word, kind: .original, quoted: true),
-        ], hideAfter: 2.5)
+        ], hideAfter: 3)
         return false
     }
 

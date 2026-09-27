@@ -1,8 +1,7 @@
 # AC Notch
 
-iPhone-style autocorrect for the Mac. When you misspell a word in any app, two options
-appear: what you typed and the fix (`“teh” | the`). Correctly spelled words show nothing,
-unless **Suggest Word Completions** is on. On Macs with a notch, the notch grows "wings": the main
+iPhone-style autocorrect for the Mac. While you type in any app, two options hover by your
+cursor: what you typed and the fix (`“teh” | the`), or a completion (`hel | hello`). On Macs with a notch, the notch grows "wings": the main
 word (what space will type) on the left, the two alternatives on the right.
 
 ```

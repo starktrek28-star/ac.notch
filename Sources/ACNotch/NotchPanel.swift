@@ -79,12 +79,12 @@ struct StripView: View {
         .background(background)
     }
 
-    /// Options in reading order. The main option is first in `model.options`; with two,
-    /// the typed word goes first so it reads like the fix: `“teh” | the`.
+    /// Options in reading order: what you typed on the left, the other option on the right,
+    /// so it reads like `“teh” | the` or `hel | hello`.
     private var centered: [StripOption?] {
         let options = model.options
-        guard options.count >= 2 else { return options.map { $0 } }
-        return [options[1], options[0]] + options.dropFirst(2).map { $0 }
+        let typed = options.filter { $0.kind == .typed || $0.kind == .original }
+        return (typed + options.filter { $0.kind != .typed && $0.kind != .original }).map { $0 }
     }
 
     @ViewBuilder
