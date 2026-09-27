@@ -17,7 +17,7 @@ final class TypingController {
 
     init(notch: NotchController) {
         self.notch = notch
-        notch.model.onPick = { [weak self] option in self?.pick(option) }
+        notch.onPick = { [weak self] option in self?.pick(option) }
     }
 
     var isRunning: Bool { tap != nil }

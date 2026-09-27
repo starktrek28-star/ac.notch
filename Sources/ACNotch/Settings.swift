@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// User preferences, stored in UserDefaults.
 final class Settings {
@@ -31,6 +32,21 @@ final class Settings {
     var previewNotch: Bool {
         get { defaults.bool(forKey: "previewNotch") }
         set { defaults.set(newValue, forKey: "previewNotch") }
+    }
+
+    /// Where the strip was dropped after being dragged off the notch; nil while docked.
+    var floatingCenter: NSPoint? {
+        get {
+            guard let xy = defaults.array(forKey: "floatingCenter") as? [Double], xy.count == 2 else { return nil }
+            return NSPoint(x: xy[0], y: xy[1])
+        }
+        set {
+            if let point = newValue {
+                defaults.set([Double(point.x), Double(point.y)], forKey: "floatingCenter")
+            } else {
+                defaults.removeObject(forKey: "floatingCenter")
+            }
+        }
     }
 
     var excludedBundleIDs: Set<String> {

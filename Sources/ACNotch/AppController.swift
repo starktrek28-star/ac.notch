@@ -13,6 +13,7 @@ final class AppController: NSObject {
     func start() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         typing.onToggleHotkey = { [weak self] in self?.toggleEnabled() }
+        notch.onDockChange = { [weak self] in self?.refresh() }
 
         lastApp = NSWorkspace.shared.frontmostApplication
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -71,6 +72,10 @@ final class AppController: NSObject {
         autocorrect.state = settings.autocorrect ? .on : .off
         menu.addItem(autocorrect)
 
+        if notch.isFloating {
+            menu.addItem(item("Dock Back to Notch", #selector(dockToNotch)))
+        }
+
         let preview = item("Preview Notch Layout", #selector(togglePreviewNotch))
         preview.state = settings.previewNotch ? .on : .off
         menu.addItem(preview)
@@ -121,6 +126,10 @@ final class AppController: NSObject {
     @objc private func toggleAutocorrect() {
         settings.autocorrect.toggle()
         refresh()
+    }
+
+    @objc private func dockToNotch() {
+        notch.dock()
     }
 
     @objc private func togglePreviewNotch() {
