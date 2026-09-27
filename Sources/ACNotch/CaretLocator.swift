@@ -17,7 +17,7 @@ enum CaretLocator {
         AXUIElementSetMessagingTimeout(system, 0.05)
         guard let focused = element(system, kAXFocusedUIElementAttribute) else { return nil }
 
-        if let rect = selectionBounds(focused) { return toCocoa(rect) }
+        if let rect = selectionBounds(focused) ?? webCaretBounds(focused) { return toCocoa(rect) }
 
         wakeAccessibility(for: focused)
         if let field = frame(of: focused), field.height > 0, field.height < 200 { return toCocoa(field) }
@@ -40,6 +40,39 @@ enum CaretLocator {
             return CGRect(x: rect.maxX, y: rect.minY, width: 1, height: rect.height)
         }
         return nil
+    }
+
+    /// Web pages (Safari, Chrome and other browsers) describe text positions with "text
+    /// markers" rather than character ranges. Measure the character just before the caret.
+    private static func webCaretBounds(_ element: AXUIElement) -> CGRect? {
+        var selectionRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXSelectedTextMarkerRange" as CFString, &selectionRef) == .success,
+              let selection = selectionRef else { return nil }
+
+        if let rect = markerRangeBounds(element, selection), rect.height > 0 {
+            return CGRect(x: rect.maxX, y: rect.minY, width: 1, height: rect.height)
+        }
+        // An empty selection often measures as nothing: widen it to the previous character.
+        guard let caret = parameterized(element, "AXStartTextMarkerForTextMarkerRange", selection),
+              let previous = parameterized(element, "AXPreviousTextMarkerForTextMarker", caret),
+              let range = parameterized(element, "AXTextMarkerRangeForUnorderedTextMarkers", [previous, caret] as CFArray),
+              let rect = markerRangeBounds(element, range), rect.height > 0 else { return nil }
+        return CGRect(x: rect.maxX, y: rect.minY, width: 1, height: rect.height)
+    }
+
+    private static func markerRangeBounds(_ element: AXUIElement, _ markerRange: CFTypeRef) -> CGRect? {
+        guard let boundsRef = parameterized(element, "AXBoundsForTextMarkerRange", markerRange),
+              CFGetTypeID(boundsRef) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue(boundsRef as! AXValue, .cgRect, &rect), rect.height < 400 else { return nil }
+        return rect
+    }
+
+    private static func parameterized(_ element: AXUIElement, _ attribute: String, _ parameter: CFTypeRef) -> CFTypeRef? {
+        var result: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(element, attribute as CFString, parameter, &result) == .success
+        else { return nil }
+        return result
     }
 
     private static func bounds(_ element: AXUIElement, _ range: CFRange) -> CGRect? {
