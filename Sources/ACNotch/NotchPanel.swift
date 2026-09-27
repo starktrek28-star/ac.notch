@@ -4,13 +4,11 @@ import SwiftUI
 final class StripModel: ObservableObject {
     /// The pills for the word being typed (the word, plus the original on offer after a backspace).
     @Published var options: [StripOption] = []
-    /// Words already typed, oldest first. They slide off to the left as new words arrive.
+    /// The word typed last, shown between words so the strip never blanks out.
     @Published var trail: [TrailWord] = []
     /// Identifies the word being typed, so its pill glides into the trail instead of popping.
     @Published var currentID = 0
     @Published var layout: StripLayout = .pill
-    /// Width of the ticker pill, set by the controller.
-    @Published var tickerWidth: CGFloat = 0
     var onPick: ((StripOption) -> Void)?
 }
 
@@ -56,12 +54,10 @@ struct StripView: View {
         Group {
             switch model.layout {
             case .floating:
-                // One ticker pill of your running text: the word being typed at the right end,
-                // by the cursor; earlier words scroll off the left edge and fade. After a
+                // One pill: the word you're typing (greyed when it will be fixed). After a
                 // backspace, the original word pops out beside it in its own pill.
                 HStack(spacing: 6) {
-                    ticker
-                    ForEach(Array(model.options.dropFirst().enumerated()), id: \.offset) { _, option in
+                    ForEach(Array(model.options.enumerated()), id: \.offset) { _, option in
                         pill(option)
                             .transition(.scale(scale: 0.4, anchor: .leading).combined(with: .opacity))
                     }
@@ -121,31 +117,6 @@ struct StripView: View {
         case .wings:
             NotchShape(radius: 10).fill(Color.black)
         }
-    }
-
-    /// The running line of text, right-aligned and clipped on the left with a fade.
-    private var ticker: some View {
-        HStack(spacing: 0) {
-            if !model.trail.isEmpty {
-                Text(model.trail.map(\.text).joined(separator: " ") + " ")
-                    .foregroundColor(Color.white.opacity(0.5))
-            }
-            if let word = model.options.first {
-                slot(word)
-            }
-        }
-        .font(.system(size: 13))
-        .lineLimit(1)
-        .fixedSize()
-        .frame(width: max(model.tickerWidth - 20, 0), alignment: .trailing)
-        .clipped()
-        .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
-                                     .init(color: .black, location: 0.3),
-                                     .init(color: .black, location: 1)],
-                             startPoint: .leading, endPoint: .trailing))
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(glassCapsule)
     }
 
     private func pill(_ option: StripOption) -> some View {
@@ -262,39 +233,19 @@ final class NotchController {
         return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 16 + 8 + 6
     }
 
-    private let maxTickerWidth: CGFloat = 200
-
-    private func textWidth(_ text: String, bold: Bool = false) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 13, weight: bold ? .semibold : .regular)
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    private var optionWidths: [CGFloat] {
+        model.options.map { pillWidth($0.displayText, bold: $0.highlighted) }
     }
 
-    /// Width of the current word as drawn in the ticker (with its grey highlight padding).
-    private var currentWordWidth: CGFloat {
-        guard let word = model.options.first else { return 0 }
-        return textWidth(word.displayText, bold: word.highlighted) + 16
+    /// The pills side by side, 6 pt apart.
+    private var floatWidth: CGFloat {
+        let widths = optionWidths
+        return max(widths.reduce(0, +) + 6 * CGFloat(max(widths.count - 1, 0)) + 2, 40)
     }
-
-    /// The ticker is as wide as its text, up to a limit; beyond that older text scrolls off.
-    private var tickerWidth: CGFloat {
-        let trailText = model.trail.map(\.text).joined(separator: " ")
-        let trail = trailText.isEmpty ? 0 : textWidth(trailText + " ")
-        return min(max(trail + currentWordWidth + 20, 44), maxTickerWidth)
-    }
-
-    /// Pills beside the ticker (the original word on offer after a backspace).
-    private var extrasWidth: CGFloat {
-        model.options.dropFirst().map { pillWidth($0.displayText, bold: $0.highlighted) + 6 }.reduce(0, +)
-    }
-
-    private var floatWidth: CGFloat { tickerWidth + extrasWidth + 2 }
 
     /// Distance from the strip's left edge to the point that should sit over the caret:
-    /// the middle of the current word, at the right end of the ticker.
-    private var caretAnchor: CGFloat {
-        if model.options.first != nil { return tickerWidth - 10 - currentWordWidth / 2 }
-        return tickerWidth - 10
-    }
+    /// the middle of the main pill.
+    private var caretAnchor: CGFloat { (optionWidths.first ?? floatWidth) / 2 }
 
     /// How far you pull before it breaks away from the notch.
     private let detachDistance: CGFloat = 44
@@ -355,34 +306,18 @@ final class NotchController {
         }
     }
 
-    /// The word being typed is done: it joins the running text in the ticker (as `text`).
+    /// The word being typed is done; remember it so the strip can keep showing it until the
+    /// next word starts, instead of blanking out on every space.
     func commitWord(_ text: String) {
-        var instant = Transaction()
-        instant.disablesAnimations = true
-        withTransaction(instant) {
-            model.trail = [TrailWord(id: model.currentID, text: text)]   // just the last word
-            model.currentID += 1
-            model.options = []
-        }
+        model.trail = [TrailWord(id: model.currentID, text: text)]
+        model.currentID += 1
     }
 
-    /// Backspacing into the last word: take it back out of the trail.
+    /// Backspacing into the last word: forget it again.
     func uncommitWord() {
         guard let last = model.trail.last else { return }
-        var instant = Transaction()
-        instant.disablesAnimations = true
-        withTransaction(instant) {
-            model.trail.removeLast()
-            model.currentID = last.id
-        }
-    }
-
-    /// For the notch layouts, which have no ticker: an empty strip shows the last word typed.
-    private func showLastWordIfEmpty() {
-        guard model.options.isEmpty, let last = model.trail.last else { return }
-        var instant = Transaction()
-        instant.disablesAnimations = true
-        withTransaction(instant) { model.options = [StripOption(text: last.text, kind: .info)] }
+        model.trail.removeLast()
+        model.currentID = last.id
     }
 
     func clearTrail() {
@@ -393,32 +328,24 @@ final class NotchController {
     func show(_ options: [StripOption], hideAfter delay: TimeInterval? = nil) {
         hideWork?.cancel()
         showToken += 1
-        guard !options.isEmpty || !model.trail.isEmpty else { hide(); return }
-        // Words change instantly, like typing itself; only the original-word pill popping out
-        // beside the ticker is animated.
-        let popsOut = options.count > 1 && model.options.count <= 1
-        let update = {
-            self.model.options = options
-            self.model.tickerWidth = self.tickerWidth
-        }
-        if popsOut {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.72), update)
-        } else {
-            var instant = Transaction()
-            instant.disablesAnimations = true
-            withTransaction(instant, update)
+        // Between words, keep showing the word just typed.
+        let shown = options.isEmpty ? model.trail.suffix(1).map { StripOption(text: $0.text, kind: .info) } : options
+        guard !shown.isEmpty else {
+            Diagnostics.log("hide: nothing to show")
+            hide()
+            return
         }
         if let delay { hide(after: delay) }
 
         guard Settings.shared.followCaret else {
-            // On the notch there's no ticker: between words, keep showing the word just typed.
-            showLastWordIfEmpty()
+            apply(shown)
             place()
             reveal()
             return
         }
         // Parked somewhere by hand: stay there until called home.
         if let parked = parkedCenter {
+            apply(shown)
             if drag == nil, springTimer == nil {
                 setLayout(.floating)
                 move(to: floatingFrame(center: clamped(parked)), animated: false)
@@ -426,18 +353,35 @@ final class NotchController {
             reveal()
             return
         }
-        // Look up the caret a moment after the keystroke, once the app has moved it,
-        // so typing never waits on the lookup.
+        // Look up the caret a moment after the keystroke, once the app has moved it, so typing
+        // never waits on the lookup. The words and the position then change together, in one go.
         let token = showToken
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, self.showToken == token else { return }
+            self.apply(shown)
             // In a browser's address bar the strip sits on the notch instead of following.
-            if CaretLocator.focusIsAddressBar() || !self.placeAtCaret() {
-                self.showLastWordIfEmpty()
+            if CaretLocator.focusIsAddressBar() {
+                Diagnostics.log("place: address bar, on the notch")
+                self.stopSpring()
+                self.place()
+            } else if !self.placeAtCaret() {
+                Diagnostics.log("place: no caret, on the notch")
                 self.stopSpring()
                 self.place()
             }
             self.reveal()
+        }
+    }
+
+    /// Words change instantly, like typing itself; only the original-word pill popping out is animated.
+    private func apply(_ options: [StripOption]) {
+        guard options != model.options else { return }
+        if options.count > 1 && model.options.count <= 1 {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { model.options = options }
+        } else {
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { model.options = options }
         }
     }
 
@@ -453,6 +397,7 @@ final class NotchController {
     }
 
     func hide(after delay: TimeInterval = 0) {
+        if delay == 0, panel.isVisible { Diagnostics.log("hide: now") }
         hideWork?.cancel()
         if delay == 0 { showToken += 1 }
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
@@ -477,6 +422,7 @@ final class NotchController {
 
     private func fadeOut() {
         guard panel.isVisible else { return }
+        Diagnostics.log("fade out")
         // Don't vanish while it's being dragged or the pointer is resting on it.
         if drag != nil || panel.frame.contains(NSEvent.mouseLocation) {
             hide(after: 1)
@@ -503,8 +449,14 @@ final class NotchController {
         let showing = panel.isVisible && panel.alphaValue > 0 && model.layout == .floating
         // A lookup can miss for a moment (a web page mid-update, a space with no width yet).
         // If the strip is already out, leave it where it is rather than hiding or jumping.
-        guard let found = CaretLocator.caret() else { return showing }
-        if !found.precise, showing, Date().timeIntervalSince(lastPreciseCaret) < 5 { return true }
+        guard let found = CaretLocator.caret() else {
+            if showing { Diagnostics.log("place: caret lookup missed, staying put") }
+            return showing
+        }
+        if !found.precise, showing, Date().timeIntervalSince(lastPreciseCaret) < 5 {
+            Diagnostics.log("place: only a rough position, staying put")
+            return true
+        }
         if found.precise { lastPreciseCaret = Date() }
         let caret = found.rect
         guard let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }
@@ -519,7 +471,7 @@ final class NotchController {
         belowCaret = below
 
         let y = below ? caret.minY - gap - pillHeight / 2 : caret.maxY + gap + pillHeight / 2
-        // Glide along with the caret: the current word's pill sits right over it, the trail to its left.
+        // Glide along with the caret: the main pill sits right over it.
         let width = floatWidth
         let left = min(max(caret.midX - caretAnchor, area.minX + 8), area.maxX - width - 8)
 
@@ -702,6 +654,16 @@ final class NotchController {
             RunLoop.main.add(timer, forMode: .common)
             springTimer = timer
         }
+        // Only the position glides. The size snaps at once, keeping the left edge put, so the
+        // pill's glass never lags behind (and clips) the words inside it.
+        let leftEdge = current.x - current.width / 2, bottomEdge = current.y - current.height / 2
+        current.width = target.width
+        current.height = target.height
+        current.x = leftEdge + current.width / 2
+        current.y = bottomEdge + current.height / 2
+        velocity.width = 0
+        velocity.height = 0
+        panel.setFrame(current.rect, display: true)
     }
 
     private func stepSpring() {

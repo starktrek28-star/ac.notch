@@ -103,6 +103,7 @@ final class AppController: NSObject {
             menu.addItem(item("Grant Accessibility Access…", #selector(openAccessibilitySettings)))
         }
         menu.addItem(item("How It Works", #selector(showHelp)))
+        menu.addItem(item("Copy Diagnostics", #selector(copyDiagnostics)))
         menu.addItem(item("Quit AC Notch", #selector(quit), key: "q"))
         return menu
     }
@@ -187,6 +188,11 @@ final class AppController: NSObject {
         """
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
+    }
+
+    @objc private func copyDiagnostics() {
+        Diagnostics.copyToClipboard()
+        notch.show([StripOption(text: "Diagnostics copied", kind: .info)], hideAfter: 1.5)
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

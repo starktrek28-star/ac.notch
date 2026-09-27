@@ -196,6 +196,7 @@ final class TypingController {
     }
 
     private func finishWord(boundary: String) -> Bool {
+        Diagnostics.log("word end (\(buffer.count) letters, trusted=\(trust == .trusted))")
         let word = buffer
         let wasTrusted = trust == .trusted
         buffer = ""

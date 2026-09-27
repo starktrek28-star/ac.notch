@@ -1,10 +1,8 @@
 # AC Notch
 
-iPhone-style autocorrect for the Mac. While you type in any app, a small ticker pill hovers by
-your cursor showing your running text: the word you're typing at its right end, right over the
-cursor (greyed when it's about to be fixed), and the previous word fading off the left edge,
-like `( …est  car )`. Press space and a typo is simply fixed, like on
-iPhone, and the fixed word is briefly underlined. Changed your mind? Press **backspace** and a second pill pops out with what you
+iPhone-style autocorrect for the Mac. While you type in any app, one small pill hovers by
+your cursor showing the word you're typing (greyed when it's about to be fixed). Press space
+and a typo is simply fixed, like on iPhone, and the fixed word is briefly underlined. Changed your mind? Press **backspace** and a second pill pops out with what you
 actually typed (`the` `“teh” ⇥`); press **Tab** (or click it) to put it back. Put a word back
 twice and AC Notch stops correcting it for good. On Macs with a notch, the notch grows "wings": the main
 word (what space will type) on the left, the two alternatives on the right.
@@ -32,7 +30,9 @@ Macs without a notch get a notch-shaped pill instead (`the`), or turn on
 - Press **space** or punctuation and a misspelled word is fixed automatically.
 - Press **backspace** straight after a fix, then **Tab**, to undo it.
 - **Click** a suggestion to use it.
-- **⌃⌥Space** (Control + Option + Space) turns it on or off. The menu bar icon does too.
+- **⌃⌥Space** (Control + Option + Space) turns it on or off.
+- Something off? Menu bar icon → **Copy Diagnostics**, then paste it to whoever's helping. It records
+  where the cursor was found and why the pill moved or hid, never what you typed. The menu bar icon does too.
 - It's off by default in terminals and code editors, and you can turn it off per app from the menu bar.
 
 Everything runs on your Mac using Apple's built-in spell checker. Nothing you type is sent anywhere.

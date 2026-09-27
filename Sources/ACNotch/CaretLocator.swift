@@ -15,6 +15,8 @@ enum CaretLocator {
         let rect: NSRect
         /// False when this is only the text field's frame or an estimate, not the caret itself.
         let precise: Bool
+        /// How it was found, for diagnostics.
+        let source: String
     }
 
     /// The caret's rectangle in Cocoa screen coordinates (origin bottom-left), or nil if
@@ -22,20 +24,91 @@ enum CaretLocator {
     static func caret() -> Caret? {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, 0.05)
-        guard let focused = element(system, kAXFocusedUIElementAttribute) else { return nil }
+        guard let focused = element(system, kAXFocusedUIElementAttribute) else {
+            Diagnostics.log("caret: no focused element in \(Diagnostics.frontApp())")
+            return nil
+        }
+        let role = string(focused, kAXRoleAttribute) ?? "?"
 
-        if let rect = selectionBounds(focused) ?? webCaretBounds(focused) {
-            return Caret(rect: toCocoa(rect), precise: true)
+        if let (rect, how) = selectionBounds(focused) ?? webCaretBounds(focused) {
+            let caret = Caret(rect: toCocoa(rect), precise: true, source: how)
+            Diagnostics.log("caret: \(how) \(Diagnostics.describe(caret.rect)) role=\(role) app=\(Diagnostics.frontApp())")
+            return caret
         }
 
         wakeAccessibility(for: focused)
-        guard let field = frame(of: focused), field.height > 0, field.height < 200 else { return nil }
+        guard let field = frame(of: focused), field.height > 0, field.height < 200 else {
+            Diagnostics.log("caret: not found, role=\(role) app=\(Diagnostics.frontApp())")
+            return nil
+        }
         // Single-line fields that won't say where the caret is (like a browser's address bar):
         // estimate it from the text before the caret so the strip still moves as you type.
+        let caret: Caret
         if field.height < 50, let x = estimatedCaretX(in: focused, field: field) {
-            return Caret(rect: toCocoa(CGRect(x: x, y: field.minY, width: 1, height: field.height)), precise: false)
+            caret = Caret(rect: toCocoa(CGRect(x: x, y: field.minY, width: 1, height: field.height)),
+                          precise: false, source: "estimate")
+        } else {
+            caret = Caret(rect: toCocoa(field), precise: false, source: "field")
         }
-        return Caret(rect: toCocoa(field), precise: false)
+        Diagnostics.log("caret: \(caret.source) \(Diagnostics.describe(caret.rect)) role=\(role) app=\(Diagnostics.frontApp())")
+        return caret
+    }
+
+    /// A rectangle an app reported that is actually usable: has height and isn't the
+    /// "nothing" answer of all zeros some apps give.
+    private static func usable(_ rect: CGRect?) -> CGRect? {
+        guard let rect, rect.height > 0, !(rect.minX == 0 && rect.minY == 0) else { return nil }
+        return rect
+    }
+
+    private static func selectionBounds(_ element: AXUIElement) -> (CGRect, String)? {
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+              let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue(rangeRef as! AXValue, .cfRange, &selection) else { return nil }
+
+        if let rect = usable(bounds(element, CFRange(location: selection.location, length: 0))) {
+            return (CGRect(x: rect.minX, y: rect.minY, width: max(rect.width, 1), height: rect.height), "range")
+        }
+        // Some apps give nothing for an empty range: measure the character before the caret,
+        // or the one before that if the previous one is a just-typed space with no width.
+        var fallback: (CGRect, String)?
+        for back in 1...2 where selection.location >= back {
+            guard let rect = usable(bounds(element, CFRange(location: selection.location - back, length: 1))) else { continue }
+            let gap = back == 2 ? rect.height * 0.3 : 0
+            let found = (CGRect(x: rect.maxX + gap, y: rect.minY, width: 1, height: rect.height), "range-back\(back)")
+            if rect.width > 0 { return found }
+            if fallback == nil { fallback = found }
+        }
+        return fallback
+    }
+
+    /// Web pages (Safari, Chrome and other browsers) describe text positions with "text
+    /// markers" rather than character ranges.
+    private static func webCaretBounds(_ element: AXUIElement) -> (CGRect, String)? {
+        var selectionRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXSelectedTextMarkerRange" as CFString, &selectionRef) == .success,
+              let selection = selectionRef else { return nil }
+
+        if let rect = usable(markerRangeBounds(element, selection)) {
+            return (CGRect(x: rect.maxX, y: rect.minY, width: 1, height: rect.height), "marker")
+        }
+        guard var end = parameterized(element, "AXStartTextMarkerForTextMarkerRange", selection) else { return nil }
+        var fallback: (CGRect, String)?
+        for back in 1...2 {
+            guard let start = parameterized(element, "AXPreviousTextMarkerForTextMarker", end),
+                  let range = parameterized(element, "AXTextMarkerRangeForUnorderedTextMarkers", [start, end] as CFArray)
+            else { break }
+            if let rect = usable(markerRangeBounds(element, range)) {
+                let gap = back == 2 ? rect.height * 0.3 : 0
+                let found = (CGRect(x: rect.maxX + gap, y: rect.minY, width: 1, height: rect.height), "marker-back\(back)")
+                if rect.width > 0 { return found }
+                if fallback == nil { fallback = found }
+            }
+            end = start
+        }
+        return fallback
     }
 
     /// The on-screen rectangle (Cocoa coordinates) of `length` characters that end
@@ -113,54 +186,6 @@ enum CaretLocator {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success else { return nil }
         return ref as? String
-    }
-
-    private static func selectionBounds(_ element: AXUIElement) -> CGRect? {
-        var rangeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
-              let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
-        var selection = CFRange()
-        guard AXValueGetValue(rangeRef as! AXValue, .cfRange, &selection) else { return nil }
-
-        if let rect = bounds(element, CFRange(location: selection.location, length: 0)), rect.height > 0 {
-            return CGRect(x: rect.minX, y: rect.minY, width: max(rect.width, 1), height: rect.height)
-        }
-        // Some apps give nothing for an empty range: measure the character before the caret.
-        // A space just typed often measures as nothing, so try the one before it too.
-        for back in 1...2 where selection.location >= back {
-            if let rect = bounds(element, CFRange(location: selection.location - back, length: 1)),
-               rect.height > 0, rect.width > 0 || back == 2 {
-                let gap = back == 2 ? rect.height * 0.3 : 0   // roughly one space further on
-                return CGRect(x: rect.maxX + gap, y: rect.minY, width: 1, height: rect.height)
-            }
-        }
-        return nil
-    }
-
-    /// Web pages (Safari, Chrome and other browsers) describe text positions with "text
-    /// markers" rather than character ranges. Measure the character just before the caret.
-    private static func webCaretBounds(_ element: AXUIElement) -> CGRect? {
-        var selectionRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, "AXSelectedTextMarkerRange" as CFString, &selectionRef) == .success,
-              let selection = selectionRef else { return nil }
-
-        if let rect = markerRangeBounds(element, selection), rect.height > 0 {
-            return CGRect(x: rect.maxX, y: rect.minY, width: 1, height: rect.height)
-        }
-        // An empty selection often measures as nothing: measure the previous character instead,
-        // or the one before that when the previous one is a just-typed space with no width.
-        guard var end = parameterized(element, "AXStartTextMarkerForTextMarkerRange", selection) else { return nil }
-        for back in 1...2 {
-            guard let start = parameterized(element, "AXPreviousTextMarkerForTextMarker", end),
-                  let range = parameterized(element, "AXTextMarkerRangeForUnorderedTextMarkers", [start, end] as CFArray)
-            else { return nil }
-            if let rect = markerRangeBounds(element, range), rect.height > 0, rect.width > 0 {
-                let gap = back == 2 ? rect.height * 0.3 : 0
-                return CGRect(x: rect.maxX + gap, y: rect.minY, width: 1, height: rect.height)
-            }
-            end = start
-        }
-        return nil
     }
 
     private static func markerRangeBounds(_ element: AXUIElement, _ markerRange: CFTypeRef) -> CGRect? {
