@@ -1,15 +1,17 @@
 # AC Notch
 
-iPhone-style autocorrect for the Mac. While you type in any app, two options hover by your
-cursor: what you typed and the fix (`“teh” | the`), or a completion (`hel | hello`). On Macs with a notch, the notch grows "wings": the main
+iPhone-style autocorrect for the Mac. While you type in any app, one small pill hovers by
+your cursor showing the word you'll get. Press space and a typo is simply fixed, like on
+iPhone. Changed your mind? Press **backspace** and a second pill pops out with what you
+actually typed (`the` `“teh” ⇥`); press **Tab** (or click it) to put it back. Put a word back
+twice and AC Notch stops correcting it for good. On Macs with a notch, the notch grows "wings": the main
 word (what space will type) on the left, the two alternatives on the right.
 
 ```
    the   [ notch ]   “teh”
 ```
 
-**It follows your text cursor.** By default the strip appears as a frosted `“teh” | the`
-capsule right next to the blinking cursor: below it when you're typing near the top of the
+**It follows your text cursor.** By default the strip appears as a frosted pill right next to the blinking cursor: below it when you're typing near the top of the
 screen (a browser's search bar), above it near the bottom (a chat box). The cursor is its
 home: if it's ever in the way, drag it somewhere else and it stays there until you press
 **⌃⌥H** (Control + Option + H), which sends it gliding back to the cursor. In a browser's
@@ -18,16 +20,15 @@ web addresses. Turn off
 **Follow Text Cursor** in the menu to keep it on the notch instead.
 
 **On the notch, drag it anywhere.** Pull the strip off the notch and it breaks free into a floating,
-frosted-glass `“teh” | the` capsule. Drop it wherever your eyes are (near a chat box, a search bar)
+frosted-glass pill. Drop it wherever your eyes are (near a chat box, a search bar)
 and it stays there. Drag it back near the notch and it snaps home, or use **Dock Back to Notch**
 in the menu.
 
 Macs without a notch get a notch-shaped pill instead (`“teh” | the`), or turn on
 **Preview Notch Layout** in the menu to see the wings around a pretend notch.
 
-- Press **Tab** to take the suggestion (marked ⇥), like Gmail's Smart Compose.
 - Press **space** or punctuation and a misspelled word is fixed automatically.
-- Press **backspace** straight after a fix to undo it.
+- Press **backspace** straight after a fix, then **Tab**, to undo it.
 - **Click** a suggestion to use it.
 - **⌃⌥Space** (Control + Option + Space) turns it on or off. The menu bar icon does too.
 - It's off by default in terminals and code editors, and you can turn it off per app from the menu bar.

@@ -44,10 +44,30 @@ final class Suggester {
         "youre": "you're", "theyre": "they're",
     ]
 
+    init() {
+        ignored = Set(UserDefaults.standard.stringArray(forKey: "learnedWords") ?? [])
+    }
+
     /// Stop correcting this word for the rest of the session.
     func ignore(_ word: String) {
         ignored.insert(word.lowercased())
         checker.ignoreWord(word, inSpellDocumentWithTag: tag)
+    }
+
+    /// The user put back a word autocorrect changed. Like iPhone, stop correcting it; after
+    /// the second time, remember it for good.
+    func rejected(_ word: String) {
+        ignore(word)
+        let key = word.lowercased()
+        let defaults = UserDefaults.standard
+        var counts = defaults.dictionary(forKey: "rejectCounts") as? [String: Int] ?? [:]
+        counts[key, default: 0] += 1
+        defaults.set(counts, forKey: "rejectCounts")
+        if counts[key, default: 0] >= 2 {
+            var learned = Set(defaults.stringArray(forKey: "learnedWords") ?? [])
+            learned.insert(key)
+            defaults.set(Array(learned), forKey: "learnedWords")
+        }
     }
 
     func analyze(_ word: String) -> Analysis {
@@ -61,7 +81,6 @@ final class Suggester {
 
         var autocorrection: String?
         var misspelled = false
-        var alternatives: [String] = []
 
         if eligible, let fix = Suggester.special[lower] {
             let fixed = matchCase(fix, to: word)
@@ -72,34 +91,16 @@ final class Suggester {
             misspelled = found.location != NSNotFound
             if misspelled {
                 autocorrection = checker.correction(forWordRange: range, in: word, language: language,
-                                                    inSpellDocumentWithTag: tag)
-                alternatives += checker.guesses(forWordRange: range, in: word, language: language,
-                                                inSpellDocumentWithTag: tag) ?? []
+                                                    inSpellDocumentWithTag: tag).map { matchCase($0, to: word) }
             }
         }
 
-        if hasLetters {
-            alternatives += checker.completions(forPartialWordRange: range, in: word, language: language,
-                                                inSpellDocumentWithTag: tag) ?? []
-        }
-
-        var seen: Set<String> = [lower]
-        if let autocorrection { seen.insert(autocorrection.lowercased()) }
-        let extras = alternatives
-            .map { matchCase($0, to: word) }
-            .filter { seen.insert($0.lowercased()).inserted }
-
-        // Always two options (one if there's nothing else to offer). The first is the main
-        // one: what space gives you, highlighted.
-        var options: [StripOption]
+        // One pill: the word you'll get when you press space.
+        let options: [StripOption]
         if let autocorrection {
-            options = [
-                StripOption(text: autocorrection, kind: .correction, highlighted: true, acceptsTab: true),
-                StripOption(text: word, kind: .typed, quoted: true),
-            ]
+            options = [StripOption(text: autocorrection, kind: .correction, highlighted: true)]
         } else {
-            options = [StripOption(text: word, kind: .typed, highlighted: true, quoted: misspelled)]
-            if let other = extras.first { options.append(StripOption(text: other, kind: .suggestion, acceptsTab: true)) }
+            options = [StripOption(text: word, kind: .typed, quoted: misspelled)]
         }
         return Analysis(options: options, autocorrection: autocorrection)
     }

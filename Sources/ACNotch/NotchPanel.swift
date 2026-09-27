@@ -43,7 +43,19 @@ struct StripView: View {
     var body: some View {
         Group {
             switch model.layout {
-            case .pill, .floating:
+            case .floating:
+                // Separate pills side by side; a second one pops out of the first.
+                HStack(spacing: 6) {
+                    ForEach(Array(model.options.enumerated()), id: \.offset) { index, option in
+                        slot(option)
+                            .fixedSize()
+                            .padding(.horizontal, 4)
+                            .frame(height: 30)
+                            .background(glassCapsule)
+                            .transition(.scale(scale: 0.4, anchor: .leading).combined(with: .opacity))
+                    }
+                }
+            case .pill:
                 // iPhone order: the main word sits in the middle slot.
                 HStack(spacing: 0) {
                     ForEach(Array(centered.enumerated()), id: \.offset) { index, option in
@@ -91,18 +103,22 @@ struct StripView: View {
     private var background: some View {
         switch model.layout {
         case .floating:
-            // Frosted dark glass rather than a solid slab of black.
-            ZStack {
-                FrostedGlass()
-                Color.black.opacity(0.3)
-            }
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+            Color.clear   // each floating pill draws its own glass
         case .pill:
             NotchShape(radius: 12).fill(Color.black)
         case .wings:
             NotchShape(radius: 10).fill(Color.black)
         }
+    }
+
+    /// Frosted dark glass rather than a solid slab of black.
+    private var glassCapsule: some View {
+        ZStack {
+            FrostedGlass()
+            Color.black.opacity(0.3)
+        }
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
     }
 
     private var separator: some View {
@@ -196,15 +212,14 @@ final class NotchController {
     /// The docked pill (Macs without a notch) keeps a notch-like minimum width.
     private var pillWidth: CGFloat { max(floatWidth, 200) }
     private let wingWidth: CGFloat = 170
-    /// Floating width fits the words shown: equal slots, each as wide as the longest word.
+    /// Width of one pill per option, each sized to its word, 6 pt apart.
     private var floatWidth: CGFloat {
-        let count = max(model.options.count, 1)
-        let widest = model.options.map { option -> CGFloat in
+        let pills = model.options.map { option -> CGFloat in
             let font = NSFont.systemFont(ofSize: 13, weight: option.highlighted ? .semibold : .regular)
-            return (option.displayText as NSString).size(withAttributes: [.font: font]).width
-        }.max() ?? 0
-        let slot = ceil(widest) + 24
-        return min(max(CGFloat(count) * slot + CGFloat(count - 1) + 16 + 12, 110), 330)
+            return ceil((option.displayText as NSString).size(withAttributes: [.font: font]).width) + 16 + 8 + 4
+        }
+        let total = pills.reduce(0, +) + 6 * CGFloat(max(pills.count - 1, 0)) + 4
+        return min(max(total, 60), 360)
     }
 
     /// How far you pull before it breaks away from the notch.
@@ -268,7 +283,7 @@ final class NotchController {
         hideWork?.cancel()
         showToken += 1
         guard !options.isEmpty else { hide(); return }
-        model.options = options
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { model.options = options }
         if let delay { hide(after: delay) }
 
         guard Settings.shared.followCaret else {

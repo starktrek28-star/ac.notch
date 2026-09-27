@@ -15,6 +15,8 @@ final class TypingController {
     private var buffer = ""
     /// What the strip is showing for the word being typed.
     private var currentOptions: [StripOption] = []
+    /// After backspacing into a word that was autocorrected: the original is on offer (Tab takes it).
+    private var revertOffer: (original: String, corrected: String)?
     private var trust: Trust = .unknown
     private var lastCorrection: (original: String, corrected: String, boundary: String)?
 
@@ -46,6 +48,7 @@ final class TypingController {
 
     func reset() {
         currentOptions = []
+        revertOffer = nil
         buffer = ""
         trust = .unknown
         lastCorrection = nil
@@ -101,16 +104,15 @@ final class TypingController {
             return true
         }
 
-        if keyCode == 51 { return handleBackspace() }
-        lastCorrection = nil
-
-        // Tab takes the suggestion (like Gmail's Smart Compose), when there is one for this word.
-        if keyCode == 48, !flags.contains(.maskShift), !flags.contains(.maskAlternate),
-           trust == .trusted, !buffer.isEmpty,
-           let suggestion = currentOptions.first(where: { $0.acceptsTab }) {
-            pick(suggestion)
+        // Tab while the original word is on offer puts it back.
+        if keyCode == 48, let offer = revertOffer, !flags.contains(.maskShift), !flags.contains(.maskAlternate) {
+            revert(offer)
             return false
         }
+
+        if keyCode == 51 { return handleBackspace() }
+        lastCorrection = nil
+        revertOffer = nil
 
         switch keyCode {
         // Return, Enter, Tab, Escape, Home, PageUp, ForwardDelete, End, PageDown, arrows
@@ -144,12 +146,21 @@ final class TypingController {
     }
 
     private func handleBackspace() -> Bool {
-        // Backspace right after an autocorrect puts back what you typed (like iPhone).
+        // Backspace right after an autocorrect deletes the space as usual, and a second pill
+        // pops out offering the word you actually typed (like iPhone). Tab or a click takes it.
         if let correction = lastCorrection {
             lastCorrection = nil
-            revert(correction, keepBoundary: false)
-            return false
+            revertOffer = (correction.original, correction.corrected)
+            buffer = correction.corrected
+            trust = .trusted
+            currentOptions = [
+                StripOption(text: correction.corrected, kind: .info, highlighted: true),
+                StripOption(text: correction.original, kind: .original, quoted: true, acceptsTab: true),
+            ]
+            notch.show(currentOptions, hideAfter: 4)
+            return true
         }
+        revertOffer = nil
         if buffer.isEmpty {
             // We've backed into text we never saw.
             trust = .unknown
@@ -178,10 +189,7 @@ final class TypingController {
         Typist.backspace(word.count)
         Typist.type(corrected + boundary)
         lastCorrection = (word, corrected, boundary)
-        notch.show([
-            StripOption(text: corrected, kind: .info, highlighted: true),
-            StripOption(text: word, kind: .original, quoted: true),
-        ], hideAfter: 3)
+        notch.show([StripOption(text: corrected, kind: .info, highlighted: true)], hideAfter: 3)
         return false
     }
 
@@ -193,18 +201,16 @@ final class TypingController {
 
     // MARK: - Actions
 
-    private func revert(_ correction: (original: String, corrected: String, boundary: String), keepBoundary: Bool) {
-        Typist.backspace(correction.corrected.count + correction.boundary.count)
-        Typist.type(correction.original + (keepBoundary ? correction.boundary : ""))
-        suggester.ignore(correction.original)
+    /// Swaps an autocorrected word (caret right after it) back to what was typed.
+    private func revert(_ offer: (original: String, corrected: String)) {
+        revertOffer = nil
+        Typist.backspace(offer.corrected.count)
+        Typist.type(offer.original)
+        suggester.rejected(offer.original)
+        buffer = offer.original
         trust = .trusted
-        if keepBoundary {
-            buffer = ""
-            notch.hide(after: 0.4)
-        } else {
-            buffer = correction.original
-            refreshStrip()
-        }
+        currentOptions = [StripOption(text: offer.original, kind: .typed, highlighted: true)]
+        notch.show(currentOptions, hideAfter: 3)
     }
 
     /// A suggestion was clicked in the strip.
@@ -213,9 +219,8 @@ final class TypingController {
         case .info:
             return
         case .original:
-            guard let correction = lastCorrection else { return }
-            lastCorrection = nil
-            revert(correction, keepBoundary: true)
+            guard let offer = revertOffer else { return }
+            revert(offer)
         case .typed:
             guard !buffer.isEmpty, trust == .trusted else { return }
             suggester.ignore(buffer)
