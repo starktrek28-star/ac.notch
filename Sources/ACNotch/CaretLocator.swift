@@ -9,7 +9,7 @@ enum CaretLocator {
         "company.thebrowser.Browser", "com.operasoftware.Opera", "com.vivaldi.Vivaldi",
     ]
     private static let browsers: Set<String> = ["com.apple.Safari", "com.apple.SafariTechnologyPreview", "org.mozilla.firefox"]
-    private static var wokenPIDs = Set<pid_t>()
+    private static var wokenPIDs: [pid_t: Date] = [:]
 
     struct Caret {
         let rect: NSRect
@@ -22,9 +22,7 @@ enum CaretLocator {
     /// The caret's rectangle in Cocoa screen coordinates (origin bottom-left), or nil if
     /// the focused app doesn't say. Falls back to the text field's frame for small fields.
     static func caret(quiet: Bool = false) -> Caret? {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.05)
-        guard let focused = element(system, kAXFocusedUIElementAttribute) else {
+        guard let focused = focusedElement() else {
             if !quiet { Diagnostics.log("caret: no focused element in \(Diagnostics.frontApp())") }
             return nil
         }
@@ -115,9 +113,7 @@ enum CaretLocator {
     /// `offset - length` characters before the caret, e.g. the word just typed before a space.
     static func textRectBeforeCaret(offset: Int, length: Int) -> NSRect? {
         guard offset >= length, length > 0 else { return nil }
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.05)
-        guard let focused = element(system, kAXFocusedUIElementAttribute) else { return nil }
+        guard let focused = focusedElement() else { return nil }
 
         // Apps that measure character ranges.
         var rangeRef: CFTypeRef?
@@ -151,9 +147,7 @@ enum CaretLocator {
     /// True when typing is going into a browser's address bar, where words are often web
     /// addresses and must never be autocorrected.
     static func focusIsAddressBar() -> Bool {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.05)
-        guard let focused = element(system, kAXFocusedUIElementAttribute) else { return false }
+        guard let focused = focusedElement() else { return false }
         // Only a browser's own toolbar field, never a text box on a web page (whose hint text
         // might mention an "email address").
         var pid: pid_t = 0
@@ -234,17 +228,46 @@ enum CaretLocator {
         return (ref as! AXUIElement)
     }
 
-    /// Chrome and Electron apps (Slack, Discord, VS Code…) keep their accessibility tree
-    /// asleep until a client asks. Ask once per app so the next lookup can find the caret.
+    /// The element text is being typed into. Asks the whole system first; Chrome and Electron
+    /// apps don't answer that until their accessibility is switched on, so then ask the
+    /// frontmost app directly (switching it on first).
+    static func focusedElement() -> AXUIElement? {
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.05)
+        if let focused = element(system, kAXFocusedUIElementAttribute) { return focused }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        wakeAccessibility(pid: app.processIdentifier)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.05)
+        return element(appElement, kAXFocusedUIElementAttribute)
+    }
+
+    /// Switches on accessibility in Chrome and Electron apps (Slack, Discord, VS Code…) as soon as
+    /// they come to the front, so the caret can be found by the time you type.
+    static func prepare(_ app: NSRunningApplication) {
+        wakeAccessibility(pid: app.processIdentifier)
+    }
+
     private static func wakeAccessibility(for element: AXUIElement) {
         var pid: pid_t = 0
-        guard AXUIElementGetPid(element, &pid) == .success, !wokenPIDs.contains(pid) else { return }
-        wokenPIDs.insert(pid)
+        guard AXUIElementGetPid(element, &pid) == .success else { return }
+        wakeAccessibility(pid: pid)
+    }
+
+    /// Chrome and Electron apps keep their accessibility tree asleep until a client asks.
+    /// Ask once per running app.
+    private static func wakeAccessibility(pid: pid_t) {
+        // Once per app, retried every few seconds in case the app wasn't ready to listen.
+        if let last = wokenPIDs[pid], Date().timeIntervalSince(last) < 3 { return }
+        wokenPIDs[pid] = Date()
         let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.1)
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-        if let id = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier, chromiumBrowsers.contains(id) {
+        let id = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? "?"
+        if chromiumBrowsers.contains(id) {
             AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
         }
+        Diagnostics.log("accessibility switched on for \(id)")
     }
 
     /// Accessibility uses a top-left origin on the main display; AppKit uses bottom-left.

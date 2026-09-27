@@ -269,6 +269,8 @@ final class NotchController {
     /// Re-checks the caret while the strip is showing, so it follows the cursor even when it
     /// moves without typing (a click, the arrow keys, a new line).
     private var followTimer: Timer?
+    /// When the caret was last found, to tell a brief miss from a lost caret.
+    private var lastCaretFound = Date.distantPast
     private var suppressPick = false
     private var mouseMonitor: Any?
 
@@ -470,9 +472,16 @@ final class NotchController {
         // A lookup can miss for a moment (a web page mid-update, a space with no width yet).
         // If the strip is already out, leave it where it is rather than hiding or jumping.
         guard let found = CaretLocator.caret(quiet: quiet) else {
-            if showing, !quiet { Diagnostics.log("place: caret lookup missed, staying put") }
-            return showing
+            // A brief miss: stay put. A lasting one: don't strand the strip, go to the notch.
+            let brief = Date().timeIntervalSince(lastCaretFound) < 1
+            if showing, !quiet { Diagnostics.log(brief ? "place: caret missed, staying put" : "place: caret lost") }
+            if showing, !brief, quiet, model.layout == .floating {
+                stopSpring()
+                place()
+            }
+            return showing && brief
         }
+        lastCaretFound = Date()
 
         let caret = found.rect
         guard let screen = screen(containing: NSPoint(x: caret.midX, y: caret.midY)) ?? NSScreen.main else { return false }

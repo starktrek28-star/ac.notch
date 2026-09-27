@@ -17,6 +17,7 @@ final class AppController: NSObject {
         typing.onHomeHotkey = { [weak self] in self?.notch.returnHome() }
 
         lastApp = NSWorkspace.shared.frontmostApplication
+        if let app = lastApp, AXIsProcessTrusted() { CaretLocator.prepare(app) }
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(appActivated(_:)),
             name: NSWorkspace.didActivateApplicationNotification, object: nil)
@@ -120,6 +121,7 @@ final class AppController: NSObject {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
         lastApp = app
+        if AXIsProcessTrusted() { CaretLocator.prepare(app) }
         refresh()
     }
 

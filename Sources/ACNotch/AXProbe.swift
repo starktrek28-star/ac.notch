@@ -5,13 +5,7 @@ enum AXProbe {
     /// true: cursor is at the start of a word. false: it's in the middle of one.
     /// nil: the app doesn't say.
     static func cursorIsAtWordStart() -> Bool? {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.05)
-
-        var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focusedRef, CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else { return nil }
-        let focused = focusedRef as! AXUIElement
+        guard let focused = CaretLocator.focusedElement() else { return nil }
 
         var rangeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
