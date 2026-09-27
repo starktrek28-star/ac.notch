@@ -11,6 +11,7 @@ final class TypingController {
     var onHomeHotkey: (() -> Void)?
 
     private let suggester = Suggester()
+    private let underline = UnderlineOverlay()
     private var tap: CFMachPort?
     private var buffer = ""
     /// What the strip is showing for the word being typed.
@@ -190,6 +191,14 @@ final class TypingController {
         Typist.type(corrected + boundary)
         lastCorrection = (word, corrected, boundary)
         notch.show([StripOption(text: corrected, kind: .info, highlighted: true)], hideAfter: 3)
+
+        // Briefly underline the corrected word once the app has drawn it.
+        let length = corrected.utf16.count, offset = length + boundary.utf16.count
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self, self.lastCorrection?.corrected == corrected,
+                  let rect = CaretLocator.textRectBeforeCaret(offset: offset, length: length) else { return }
+            self.underline.show(under: rect)
+        }
         return false
     }
 
@@ -204,6 +213,7 @@ final class TypingController {
     /// Swaps an autocorrected word (caret right after it) back to what was typed.
     private func revert(_ offer: (original: String, corrected: String)) {
         revertOffer = nil
+        underline.hide()
         Typist.backspace(offer.corrected.count)
         Typist.type(offer.original)
         suggester.rejected(offer.original)

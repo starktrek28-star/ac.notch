@@ -29,6 +29,43 @@ enum CaretLocator {
         return toCocoa(field)
     }
 
+    /// The on-screen rectangle (Cocoa coordinates) of `length` characters that end
+    /// `offset - length` characters before the caret, e.g. the word just typed before a space.
+    static func textRectBeforeCaret(offset: Int, length: Int) -> NSRect? {
+        guard offset >= length, length > 0 else { return nil }
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.05)
+        guard let focused = element(system, kAXFocusedUIElementAttribute) else { return nil }
+
+        // Apps that measure character ranges.
+        var rangeRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+           let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() {
+            var selection = CFRange()
+            if AXValueGetValue(rangeRef as! AXValue, .cfRange, &selection), selection.location >= offset,
+               let rect = bounds(focused, CFRange(location: selection.location - offset, length: length)),
+               rect.width > 0, rect.height > 0 {
+                return toCocoa(rect)
+            }
+        }
+
+        // Web pages: walk back from the caret with text markers.
+        var selectionRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(focused, "AXSelectedTextMarkerRange" as CFString, &selectionRef) == .success,
+              let selection = selectionRef,
+              var marker = parameterized(focused, "AXStartTextMarkerForTextMarkerRange", selection) else { return nil }
+        var end: CFTypeRef?
+        for step in 0..<offset {
+            if step == offset - length { end = marker }
+            guard let previous = parameterized(focused, "AXPreviousTextMarkerForTextMarker", marker) else { return nil }
+            marker = previous
+        }
+        guard let end,
+              let range = parameterized(focused, "AXTextMarkerRangeForUnorderedTextMarkers", [marker, end] as CFArray),
+              let rect = markerRangeBounds(focused, range), rect.width > 0, rect.height > 0 else { return nil }
+        return toCocoa(rect)
+    }
+
     /// True when typing is going into a browser's address bar, where words are often web
     /// addresses and must never be autocorrected.
     static func focusIsAddressBar() -> Bool {
