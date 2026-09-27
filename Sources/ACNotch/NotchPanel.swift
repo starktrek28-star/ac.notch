@@ -9,6 +9,8 @@ final class StripModel: ObservableObject {
     /// Identifies the word being typed, so its pill glides into the trail instead of popping.
     @Published var currentID = 0
     @Published var layout: StripLayout = .pill
+    /// Width of the ticker pill, set by the controller.
+    @Published var tickerWidth: CGFloat = 0
     var onPick: ((StripOption) -> Void)?
 }
 
@@ -54,18 +56,13 @@ struct StripView: View {
         Group {
             switch model.layout {
             case .floating:
-                // The autocorrect trail: earlier words fade off to the left, the word being typed
-                // sits at the cursor, and the original pops out beside it after a backspace.
+                // One ticker pill of your running text: the word being typed at the right end,
+                // by the cursor; earlier words scroll off the left edge and fade. After a
+                // backspace, the original word pops out beside it in its own pill.
                 HStack(spacing: 6) {
-                    ForEach(Array(model.trail.enumerated()), id: \.element.id) { index, word in
-                        pill(StripOption(text: word.text, kind: .info))
-                            .opacity(index == model.trail.count - 1 ? 0.6 : 0.3)
-                            .transition(.asymmetric(insertion: .opacity,
-                                                    removal: .move(edge: .leading).combined(with: .opacity)))
-                    }
-                    ForEach(Array(model.options.enumerated()), id: \.offset) { index, option in
+                    ticker
+                    ForEach(Array(model.options.dropFirst().enumerated()), id: \.offset) { _, option in
                         pill(option)
-                            .id(index == 0 ? model.currentID : -1 - index)
                             .transition(.scale(scale: 0.4, anchor: .leading).combined(with: .opacity))
                     }
                 }
@@ -124,6 +121,31 @@ struct StripView: View {
         case .wings:
             NotchShape(radius: 10).fill(Color.black)
         }
+    }
+
+    /// The running line of text, right-aligned and clipped on the left with a fade.
+    private var ticker: some View {
+        HStack(spacing: 0) {
+            if !model.trail.isEmpty {
+                Text(model.trail.map(\.text).joined(separator: " ") + " ")
+                    .foregroundColor(Color.white.opacity(0.5))
+            }
+            if let word = model.options.first {
+                slot(word)
+            }
+        }
+        .font(.system(size: 13))
+        .lineLimit(1)
+        .fixedSize()
+        .frame(width: max(model.tickerWidth - 20, 0), alignment: .trailing)
+        .clipped()
+        .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
+                                     .init(color: .black, location: 0.3),
+                                     .init(color: .black, location: 1)],
+                             startPoint: .leading, endPoint: .trailing))
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(glassCapsule)
     }
 
     private func pill(_ option: StripOption) -> some View {
@@ -240,25 +262,38 @@ final class NotchController {
         return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 16 + 8 + 6
     }
 
-    private var trailWidth: CGFloat {
-        model.trail.map { pillWidth($0.text) + 6 }.reduce(0, +)
+    private let maxTickerWidth: CGFloat = 200
+
+    private func textWidth(_ text: String, bold: Bool = false) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 13, weight: bold ? .semibold : .regular)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
-    private var optionsWidth: CGFloat {
-        let widths = model.options.map { pillWidth($0.displayText, bold: $0.highlighted) }
-        return widths.reduce(0, +) + 6 * CGFloat(max(widths.count - 1, 0))
+    /// Width of the current word as drawn in the ticker (with its grey highlight padding).
+    private var currentWordWidth: CGFloat {
+        guard let word = model.options.first else { return 0 }
+        return textWidth(word.displayText, bold: word.highlighted) + 16
     }
 
-    /// The whole trail plus the current pills, 6 pt apart.
-    private var floatWidth: CGFloat { max(trailWidth + optionsWidth + 4, 40) }
+    /// The ticker is as wide as its text, up to a limit; beyond that older text scrolls off.
+    private var tickerWidth: CGFloat {
+        let trailText = model.trail.map(\.text).joined(separator: " ")
+        let trail = trailText.isEmpty ? 0 : textWidth(trailText + " ")
+        return min(max(trail + currentWordWidth + 20, 44), maxTickerWidth)
+    }
+
+    /// Pills beside the ticker (the original word on offer after a backspace).
+    private var extrasWidth: CGFloat {
+        model.options.dropFirst().map { pillWidth($0.displayText, bold: $0.highlighted) + 6 }.reduce(0, +)
+    }
+
+    private var floatWidth: CGFloat { tickerWidth + extrasWidth + 2 }
 
     /// Distance from the strip's left edge to the point that should sit over the caret:
-    /// the middle of the current word's pill, or just past the trail between words.
+    /// the middle of the current word, at the right end of the ticker.
     private var caretAnchor: CGFloat {
-        if let first = model.options.first {
-            return trailWidth + pillWidth(first.displayText, bold: first.highlighted) / 2
-        }
-        return trailWidth + 4
+        if model.options.first != nil { return tickerWidth - 10 - currentWordWidth / 2 }
+        return tickerWidth - 10
     }
 
     /// How far you pull before it breaks away from the notch.
@@ -318,12 +353,11 @@ final class NotchController {
         }
     }
 
-    /// The word being typed is done: its pill joins the trail (showing `text`) and older
-    /// words slide away, keeping the last two.
+    /// The word being typed is done: it joins the running text in the ticker (as `text`).
     func commitWord(_ text: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             model.trail.append(TrailWord(id: model.currentID, text: text))
-            if model.trail.count > 2 { model.trail.removeFirst(model.trail.count - 2) }
+            if model.trail.count > 6 { model.trail.removeFirst(model.trail.count - 6) }
             model.currentID += 1
             model.options = []
         }
@@ -347,7 +381,10 @@ final class NotchController {
         hideWork?.cancel()
         showToken += 1
         guard !options.isEmpty || !model.trail.isEmpty else { hide(); return }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { model.options = options }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+            model.options = options
+            model.tickerWidth = tickerWidth
+        }
         if let delay { hide(after: delay) }
 
         guard Settings.shared.followCaret else {
