@@ -44,10 +44,11 @@ struct StripView: View {
         Group {
             switch model.layout {
             case .pill, .floating:
+                // iPhone order: the main word sits in the middle slot.
                 HStack(spacing: 0) {
-                    ForEach(Array(model.options.enumerated()), id: \.offset) { index, option in
+                    ForEach(Array(centered.enumerated()), id: \.offset) { index, option in
                         if index > 0 { separator }
-                        slot(option)
+                        if let option { slot(option) } else { Color.clear.frame(maxWidth: .infinity) }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -78,13 +79,25 @@ struct StripView: View {
         .background(background)
     }
 
+    /// Options arranged `other | main | other`. The main option is first in `model.options`;
+    /// with only two, the third slot is left empty so the main word stays centred.
+    private var centered: [StripOption?] {
+        let options = model.options
+        guard options.count >= 2 else { return options.map { $0 } }
+        return [options[1], options[0], options.count > 2 ? options[2] : nil]
+    }
+
     @ViewBuilder
     private var background: some View {
         switch model.layout {
         case .floating:
-            Capsule()
-                .fill(Color.black)
-                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+            // Frosted dark glass rather than a solid slab of black.
+            ZStack {
+                FrostedGlass()
+                Color.black.opacity(0.3)
+            }
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
         case .pill:
             NotchShape(radius: 12).fill(Color.black)
         case .wings:
@@ -121,6 +134,20 @@ struct StripView: View {
                 .buttonStyle(.plain)
         }
     }
+}
+
+/// The dark blur macOS uses for its own volume and brightness pop-ups.
+struct FrostedGlass: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active   // stay frosted even though the panel is never the active window
+        view.appearance = NSAppearance(named: .vibrantDark)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 /// A panel that never takes keyboard focus, so the app you're typing in keeps it.
@@ -165,6 +192,7 @@ final class NotchController {
     private let pillHeight: CGFloat = 34
     private let pillWidth: CGFloat = 380
     private let wingWidth: CGFloat = 170
+    private let floatWidth: CGFloat = 330
 
     /// How far you pull before it breaks away from the notch.
     private let detachDistance: CGFloat = 44
@@ -290,13 +318,13 @@ final class NotchController {
     }
 
     private func floatingFrame(center: NSPoint) -> NSRect {
-        NSRect(x: center.x - pillWidth / 2, y: center.y - pillHeight / 2, width: pillWidth, height: pillHeight)
+        NSRect(x: center.x - floatWidth / 2, y: center.y - pillHeight / 2, width: floatWidth, height: pillHeight)
     }
 
     /// Keeps a floating strip fully on screen.
     private func clamped(_ center: NSPoint) -> NSPoint {
         guard let screen = screen(containing: center) ?? NSScreen.main else { return center }
-        let area = screen.frame.insetBy(dx: pillWidth / 2 + 8, dy: pillHeight / 2 + 8)
+        let area = screen.frame.insetBy(dx: floatWidth / 2 + 8, dy: pillHeight / 2 + 8)
         return NSPoint(x: min(max(center.x, area.minX), area.maxX),
                        y: min(max(center.y, area.minY), area.maxY))
     }
