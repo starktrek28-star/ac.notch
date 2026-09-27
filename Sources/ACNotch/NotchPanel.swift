@@ -211,6 +211,8 @@ final class NotchController {
     private var showToken = 0
     /// Which side of the caret the strip sits on; kept while it still fits so it doesn't flip.
     private var belowCaret: Bool?
+    /// Where the strip was dragged to while following the cursor; nil when it's home.
+    private var parkedCenter: NSPoint?
     private var suppressPick = false
     private var mouseMonitor: Any?
 
@@ -234,6 +236,21 @@ final class NotchController {
 
     var isFloating: Bool { Settings.shared.floatingCenter != nil }
 
+    /// True when the strip was dragged away from the cursor (its home) and left there.
+    var isParked: Bool { parkedCenter != nil }
+
+    /// Sends the strip back to hovering by the text cursor.
+    func returnHome() {
+        parkedCenter = nil
+        onDockChange?()
+        if panel.isVisible, panel.alphaValue > 0, !model.options.isEmpty {
+            if !placeAtCaret() { place() }
+            hide(after: 2.5)
+        } else {
+            show([StripOption(text: "Back to cursor", kind: .info)], hideAfter: 1.2)
+        }
+    }
+
     func show(_ options: [StripOption], hideAfter delay: TimeInterval? = nil) {
         hideWork?.cancel()
         showToken += 1
@@ -243,6 +260,15 @@ final class NotchController {
 
         guard Settings.shared.followCaret else {
             place()
+            reveal()
+            return
+        }
+        // Parked somewhere by hand: stay there until called home.
+        if let parked = parkedCenter {
+            if drag == nil, springTimer == nil {
+                setLayout(.floating)
+                move(to: floatingFrame(center: clamped(parked)), animated: false)
+            }
             reveal()
             return
         }
@@ -401,12 +427,11 @@ final class NotchController {
     // MARK: - Dragging
 
     private func handleMouse(_ event: NSEvent) -> NSEvent? {
-        // Following the caret, the strip places itself: clicks work, dragging doesn't.
-        guard event.window === panel, !Settings.shared.followCaret else {
-            if event.type == .leftMouseDown { suppressPick = false }
-            return event
-        }
+        guard event.window === panel else { return event }
         let mouse = NSEvent.mouseLocation
+        // Following the cursor, the strip is already a free capsule: dragging just parks it.
+        let following = Settings.shared.followCaret
+        let alreadyFree = following || isFloating
 
         switch event.type {
         case .leftMouseDown:
@@ -415,8 +440,8 @@ final class NotchController {
             let frame = panel.frame
             drag = Drag(startMouse: mouse,
                         startFrame: frame,
-                        grabOffset: isFloating ? CGVector(dx: frame.midX - mouse.x, dy: frame.midY - mouse.y) : .zero,
-                        detached: isFloating)
+                        grabOffset: alreadyFree ? CGVector(dx: frame.midX - mouse.x, dy: frame.midY - mouse.y) : .zero,
+                        detached: alreadyFree)
             return event
 
         case .leftMouseDragged:
@@ -439,7 +464,7 @@ final class NotchController {
                 }
             } else {
                 var center = NSPoint(x: mouse.x + d.grabOffset.dx, y: mouse.y + d.grabOffset.dy)
-                if let dockCenter = dockCenter(near: center) {
+                if !following, let dockCenter = dockCenter(near: center) {
                     // Near the notch the magnet starts pulling it home.
                     let gap = hypot(center.x - dockCenter.x, center.y - dockCenter.y)
                     if gap < snapRadius {
@@ -459,7 +484,12 @@ final class NotchController {
             guard d.moved else { return event }
             suppressPick = true   // a drag is not a click on a suggestion
 
-            if !d.detached {
+            if following {
+                let resting = clamped(target.rect.center)
+                parkedCenter = resting
+                onDockChange?()
+                move(to: floatingFrame(center: resting), animated: true)
+            } else if !d.detached {
                 move(to: d.startFrame, animated: true)   // didn't pull hard enough: snap back
             } else {
                 let center = target.rect.center

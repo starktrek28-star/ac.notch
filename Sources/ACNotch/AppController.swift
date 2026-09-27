@@ -14,6 +14,7 @@ final class AppController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         typing.onToggleHotkey = { [weak self] in self?.toggleEnabled() }
         notch.onDockChange = { [weak self] in self?.refresh() }
+        typing.onHomeHotkey = { [weak self] in self?.notch.returnHome() }
 
         lastApp = NSWorkspace.shared.frontmostApplication
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -76,6 +77,10 @@ final class AppController: NSObject {
         follow.state = settings.followCaret ? .on : .off
         menu.addItem(follow)
 
+        if settings.followCaret, notch.isParked {
+            menu.addItem(item("Return to Cursor  (⌃⌥H)", #selector(returnToCursor)))
+        }
+
         if !settings.followCaret, notch.isFloating {
             menu.addItem(item("Dock Back to Notch", #selector(dockToNotch)))
         }
@@ -132,6 +137,10 @@ final class AppController: NSObject {
         refresh()
     }
 
+    @objc private func returnToCursor() {
+        notch.returnHome()
+    }
+
     @objc private func toggleFollowCaret() {
         settings.followCaret.toggle()
         notch.hide()
@@ -171,6 +180,7 @@ final class AppController: NSObject {
         • Press space or punctuation and a misspelled word is fixed automatically.
         • Press backspace straight after a fix to undo it.
         • Click any suggestion to use it.
+        • The suggestions hover by your text cursor. Drag them away if they're in the way; ⌃⌥H brings them back.
         • ⌃⌥Space turns AC Notch on or off.
 
         Everything runs on your Mac using Apple's built-in spell checker. Nothing you type leaves your computer.

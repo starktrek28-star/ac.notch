@@ -8,6 +8,7 @@ final class TypingController {
 
     let notch: NotchController
     var onToggleHotkey: (() -> Void)?
+    var onHomeHotkey: (() -> Void)?
 
     private let suggester = Suggester()
     private var tap: CFMachPort?
@@ -77,6 +78,12 @@ final class TypingController {
         // Control + Option + Space toggles everything on/off.
         if keyCode == 49, flags.contains(.maskControl), flags.contains(.maskAlternate), !flags.contains(.maskCommand) {
             DispatchQueue.main.async { [weak self] in self?.onToggleHotkey?() }
+            return false
+        }
+
+        // Control + Option + H calls the strip back to the text cursor.
+        if keyCode == 4, flags.contains(.maskControl), flags.contains(.maskAlternate), !flags.contains(.maskCommand) {
+            DispatchQueue.main.async { [weak self] in self?.onHomeHotkey?() }
             return false
         }
 
