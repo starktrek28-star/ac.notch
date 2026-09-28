@@ -169,3 +169,26 @@ if CommandLine.arguments.contains("--confidence") {
         }
     }
 }
+
+if CommandLine.arguments.contains("--why") {
+    // Where do laptop-typo misses come from?
+    var missingCandidate = 0, outscored = 0, gated = 0, ok = 0
+    var examples: [String: [String]] = [:]
+    for r in synthetic where r.count == 3 {
+        let (prev, typo, intended) = (r[0], r[1], r[2])
+        let out = contextual.correction(for: typo, previous: prev)
+        if out?.lowercased() == intended { ok += 1; continue }
+        let cands = model.candidates(for: typo)
+        let cost = KeyboardDistance.between(typo, intended)
+        let limit = contextual.config.maxCost(typo.count)
+        let bucket: String
+        if !cands.contains(intended) { missingCandidate += 1; bucket = "not a candidate" }
+        else if out == nil { gated += 1; bucket = cost > limit ? "over cost limit" : "left alone (not confident)" }
+        else { outscored += 1; bucket = "outscored" }
+        if (examples[bucket]?.count ?? 0) < 25 {
+            examples[bucket, default: []].append("\(prev) \(typo) → \(out ?? "–") (meant \(intended), cost \(String(format: "%.1f", cost)))")
+        }
+    }
+    print("\nok \(ok)  not-a-candidate \(missingCandidate)  outscored \(outscored)  left-alone \(gated)")
+    for (k, v) in examples { print("\n[\(k)]"); v.forEach { print("  " + $0) } }
+}

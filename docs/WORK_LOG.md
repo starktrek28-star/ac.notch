@@ -72,6 +72,15 @@ word is finished; the live preview while typing uses the engine alone (~0.1 ms p
 - Local Swift for Linux: swift-6.0.3-RELEASE-ubuntu24.04 from download.swift.org; `swift test`,
   `swift build -c release --product acbench && .build/release/acbench .`
 
+### UNFINISHED — user request (Sep 28): push laptop typos from ~94% toward 99.9%
+Do this first in session 2. Started but blocked by a tooling outage: `Sources/acbench/main.swift`
+has a new `--why` mode (not yet built or committed) that splits misses into not-a-candidate /
+outscored / left-alone. Build it, run `.build/release/acbench . --why`, attack the biggest bucket
+(dev/test split first so tuning isn't on the test set; trigram or longer context; error-model costs
+learned from data; distance-2 substitution candidates; a larger bigram set). Also measure the honest
+ceiling: some typos have two valid answers (loed → loved/lied, ahd → had/and), so 99.9% on this set
+is likely impossible for any autocorrect. Report the ceiling alongside the new number.
+
 ### Next (session 2)
 - Separate tuning set from test set.
 - Step 3 laptop typo patterns (space/letter slips like "thequick", missing apostrophes beyond the list),
