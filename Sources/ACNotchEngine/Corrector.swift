@@ -22,6 +22,13 @@ public final class Corrector {
         /// worse than none.
         public var confidentCost = 1.0
         public var margin = 3.0
+        /// When another dictionary (the system's) knows the typed word but ours doesn't, it still
+        /// gets corrected if the fix is a slip no bigger than this. That dictionary accepts many
+        /// rare words that are far more often typos ("hee", "wll"). Capitalised words are always
+        /// left alone (names). 0 = always trust the other dictionary.
+        public var overrideElsewhereUpTo = 0.0
+        /// A candidate suggested by the other spell checker as its own correction gets this bonus.
+        public var preferredBonus = 0.0
         public init() {}
     }
 
@@ -56,6 +63,7 @@ public final class Corrector {
     ///     taught the system, words the dictionary lacks).
     public func correction(for typed: String, previous: String? = nil,
                            extraCandidates: [String] = [],
+                           preferred: String? = nil,
                            isKnownElsewhere: ((String) -> Bool)? = nil) -> String? {
         let lower = typed.lowercased()
         guard typed.contains(where: \.isLetter), !typed.contains(where: \.isNumber) else { return nil }
@@ -73,11 +81,14 @@ public final class Corrector {
             return fixed == typed ? nil : fixed
         }
 
-        if model.lexicon.contains(lower) || (isKnownElsewhere?(typed) ?? false) { return nil }
+        if model.lexicon.contains(lower) { return nil }
+        let knownElsewhere = isKnownElsewhere?(typed) ?? false
+        if knownElsewhere, config.overrideElsewhereUpTo <= 0 || typed.first?.isUppercase == true { return nil }
         guard lower.count >= 2 else { return nil }
 
         var candidates = model.candidates(for: lower)
-        for extra in extraCandidates {
+        let preferredLower = preferred?.lowercased()
+        for extra in extraCandidates + [preferred].compactMap({ $0 }) {
             let e = extra.lowercased()
             if !e.contains(" "), model.lexicon.contains(e) { candidates.insert(e) }
         }
@@ -96,7 +107,8 @@ public final class Corrector {
             let cost = KeyboardDistance.between(lower, candidate)
             guard cost <= limit else { continue }
             let p = model.probability(of: candidate, after: previous, contextWeight: config.contextWeight)
-            let score = log(p) - config.errorWeight * cost
+            var score = log(p) - config.errorWeight * cost
+            if candidate == preferredLower { score += config.preferredBonus }
             if let current = best, score <= current.score {
                 runnerUp = max(runnerUp, score)
             } else {
@@ -105,6 +117,7 @@ public final class Corrector {
             }
         }
         guard let best else { return nil }
+        if knownElsewhere, best.cost > config.overrideElsewhereUpTo { return nil }
         if best.cost > config.confidentCost, best.score - runnerUp < config.margin { return nil }
         return Corrector.matchCase(best.word, to: typed)
     }

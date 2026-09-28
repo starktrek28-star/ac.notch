@@ -83,10 +83,29 @@ variants.insert((name: "Before (Apple spell checker + keyboard fallback)", corre
     return nil
 }), at: 0)
 
-variants.append((name: "Engine + Apple's dictionary and guesses (what the app uses)", correct: { typed, previous in
-    contextual.correction(for: typed, previous: previous, extraCandidates: appleGuesses(typed),
-                          isKnownElsewhere: appleKnows)
-}))
+func appleCorrection(_ word: String) -> String? {
+    let range = NSRange(location: 0, length: (word as NSString).length)
+    return checker.correction(forWordRange: range, in: word, language: checker.language(), inSpellDocumentWithTag: tag)
+}
+// Ways of combining the engine with Apple's spell checker, from strict to loose.
+for (label, overrideUpTo, bonus) in [("trusts Apple's dictionary", 0.0, 0.0),
+                                     ("overrides Apple for slips ≤0.6", 0.6, 0.0),
+                                     ("overrides Apple for slips ≤1.0", 1.0, 0.0),
+                                     ("overrides ≤0.6, Apple's pick +2", 0.6, 2.0),
+                                     ("overrides ≤1.0, Apple's pick +2", 1.0, 2.0),
+                                     ("overrides ≤1.0, Apple's pick +4", 1.0, 4.0)] {
+    var cfg = Corrector.Config()
+    cfg.overrideElsewhereUpTo = overrideUpTo
+    cfg.preferredBonus = bonus
+    let combined = Corrector(model: model, config: cfg)
+    variants.append((name: "Engine + Apple, \(label)", correct: { typed, previous in
+        let misspelled = !appleKnows(typed)
+        return combined.correction(for: typed, previous: previous,
+                                   extraCandidates: misspelled ? appleGuesses(typed) : [],
+                                   preferred: misspelled && bonus > 0 ? appleCorrection(typed) : nil,
+                                   isKnownElsewhere: appleKnows)
+    }))
+}
 #endif
 
 print("| Variant | Real misspellings fixed | …changed to the wrong word | Laptop typos fixed | …wrong word | Correct words wrongly changed |")
