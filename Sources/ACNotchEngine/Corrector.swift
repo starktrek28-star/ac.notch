@@ -8,19 +8,23 @@ import Foundation
 public final class Corrector {
     public struct Config {
         /// How strongly the keyboard distance counts against a candidate (per unit of cost, in log space).
-        public var errorWeight = 7.0
+        public var errorWeight = 8.75
         /// How much the previous word matters (0 = ignore context).
-        public var contextWeight = 0.9
+        public var contextWeight = 0.94
         /// Largest keyboard distance still worth correcting, by word length.
-        public var maxCost: (Int) -> Double = { length in
-            length <= 3 ? 1.0 : length <= 5 ? 1.5 : length <= 8 ? 2.0 : 2.5
+        public var maxCostShort = 1.0   // words of up to 3 letters
+        public var maxCostMedium = 1.5  // 4–5 letters
+        public var maxCostLong = 1.92    // 6–8 letters
+        public var maxCostVeryLong = 2.5
+        public func maxCost(_ length: Int) -> Double {
+            length <= 3 ? maxCostShort : length <= 5 ? maxCostMedium : length <= 8 ? maxCostLong : maxCostVeryLong
         }
         /// For capitalised words (probably names): only the smallest slips.
         public var capitalizedMaxCost = 0.6
         /// For bigger slips (cost above `confidentCost`), the best candidate must beat the
         /// runner-up by this much (log score), or the word is left alone: a wrong fix is
         /// worse than none.
-        public var confidentCost = 1.0
+        public var confidentCost = 1.25
         public var margin = 3.0
         /// When another dictionary (the system's) knows the typed word but ours doesn't, it still
         /// gets corrected if the fix is a slip no bigger than this. That dictionary accepts many

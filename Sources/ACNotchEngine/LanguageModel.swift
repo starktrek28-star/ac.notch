@@ -69,7 +69,7 @@ public final class LanguageModel {
     }
 
     /// Candidate words within roughly two edits of `typed` (lowercase).
-    func candidates(for typed: String) -> Set<String> {
+    public func candidates(for typed: String) -> Set<String> {
         var queries: Set<String> = [typed]
         let first = LanguageModel.deletes(of: typed)
         queries.formUnion(first)

@@ -22,20 +22,28 @@ public enum KeyboardDistance {
         return false
     }
 
+    /// What each kind of slip costs. Tuned on the benchmark's tuning set (see docs/WORK_LOG.md).
     public struct Costs {
-        public var substitution = 1.0
-        public var adjacentSubstitution = 0.5
+        /// Hitting the key next to the right one.
+        public var adjacentSubstitution = 0.78
+        /// One vowel for another ("seperate"): a spelling slip rather than a finger slip.
+        public var vowelSubstitution = 1.0
+        /// Any other wrong letter: rare on a real keyboard.
+        public var substitution = 1.6
+        /// Two neighbouring letters swapped ("teh").
         public var transposition = 0.6
-        public var insertion = 1.0
-        /// An extra copy of the letter before it ("helllo"), or a neighbouring key pressed too.
-        public var slipInsertion = 0.6
-        public var deletion = 1.0
-        /// Dropping one of a pair of repeated letters ("ocasion", "helo").
-        public var doubledDeletion = 0.5
-        /// One vowel for another ("seperate", "devision"): a spelling slip, not a finger slip.
-        public var vowelSubstitution = 0.8
-        /// Extra cost when the first letter differs: people rarely get it wrong.
-        public var firstLetter = 0.2
+        /// An extra copy of the letter before it ("fulll").
+        public var repeatInsertion = 0.75
+        /// An extra letter from a key next to its neighbour ("helkl").
+        public var neighborInsertion = 0.96
+        /// Any other extra letter.
+        public var insertion = 1.25
+        /// A letter left out ("hould").
+        public var deletion = 0.64
+        /// One of a pair of repeated letters left out ("ocasion", "helo").
+        public var doubledDeletion = 0.64
+        /// Extra cost when the first letter differs (unless the first two are just swapped).
+        public var firstLetter = 0.16
         public init() {}
     }
 
@@ -74,8 +82,10 @@ public enum KeyboardDistance {
 
     /// The typist pressed `s[k]` though it isn't in the intended word.
     private static func insertionCost(_ s: [Character], _ k: Int, _ c: Costs) -> Double {
-        if k > 0, s[k] == s[k - 1] || adjacent(s[k], s[k - 1]) { return c.slipInsertion }
-        if k + 1 < s.count, adjacent(s[k], s[k + 1]) { return c.slipInsertion }
+        if k > 0, s[k] == s[k - 1] { return c.repeatInsertion }
+        if (k > 0 && adjacent(s[k], s[k - 1])) || (k + 1 < s.count && adjacent(s[k], s[k + 1])) {
+            return c.neighborInsertion
+        }
         return c.insertion
     }
 

@@ -170,6 +170,92 @@ if CommandLine.arguments.contains("--confidence") {
     }
 }
 
+if CommandLine.arguments.contains("--autotune") {
+    // Coordinate descent on the tuning ("dev") sets only; the test sets are scored once at the end.
+    let devTypos = try rows("dev_synthetic.tsv"), devCorrect = try rows("dev_correct.tsv")
+    // Real misspellings: a fixed half for tuning, the other half for testing.
+    func fnv(_ s: String) -> UInt64 { s.utf8.reduce(14695981039346656037) { ($0 ^ UInt64($1)) &* 1099511628211 } }
+    let realDev = misspellings.filter { fnv($0[0]) % 2 == 0 }, realTest = misspellings.filter { fnv($0[0]) % 2 == 1 }
+
+    var cfg = contextual.config
+    func evaluate(_ typoRows: [[String]], _ correctRows: [[String]], _ realRows: [[String]]) -> (j: Double, line: String) {
+        let c = Corrector(model: model, config: cfg)
+        var tf = 0, tw = 0, rf = 0, rw = 0, ch = 0
+        for r in typoRows where r.count == 3 {
+            if let o = c.correction(for: r[1], previous: r[0]) { if o.lowercased() == r[2] { tf += 1 } else { tw += 1 } }
+        }
+        for r in realRows where r.count == 2 {
+            if let o = c.correction(for: r[0], previous: nil) { if o.lowercased() == r[1] { rf += 1 } else { rw += 1 } }
+        }
+        for r in correctRows where r.count == 2 { if c.correction(for: r[1], previous: r[0]) != nil { ch += 1 } }
+        func p(_ n: Int, _ d: Int) -> Double { 100 * Double(n) / Double(max(d, 1)) }
+        let j = p(tf, typoRows.count) + 0.3 * p(rf, realRows.count) - 0.3 * p(tw, typoRows.count)
+            - 0.2 * p(rw, realRows.count) - 20 * p(ch, correctRows.count)
+        let line = String(format: "typos %.1f%% fixed / %.1f%% wrong · real %.1f%% / %.1f%% · correct changed %.2f%%",
+                          p(tf, typoRows.count), p(tw, typoRows.count), p(rf, realRows.count), p(rw, realRows.count),
+                          p(ch, correctRows.count))
+        return (j, line)
+    }
+
+    typealias Knob = (name: String, get: () -> Double, set: (Double) -> Void)
+    let knobs: [Knob] = [
+        ("errorWeight", { cfg.errorWeight }, { cfg.errorWeight = $0 }),
+        ("contextWeight", { cfg.contextWeight }, { cfg.contextWeight = min($0, 0.995) }),
+        ("maxCostShort", { cfg.maxCostShort }, { cfg.maxCostShort = $0 }),
+        ("maxCostMedium", { cfg.maxCostMedium }, { cfg.maxCostMedium = $0 }),
+        ("maxCostLong", { cfg.maxCostLong }, { cfg.maxCostLong = $0 }),
+        ("confidentCost", { cfg.confidentCost }, { cfg.confidentCost = $0 }),
+        ("margin", { cfg.margin }, { cfg.margin = $0 }),
+        ("adjacentSubstitution", { KeyboardDistance.costs.adjacentSubstitution }, { KeyboardDistance.costs.adjacentSubstitution = $0 }),
+        ("vowelSubstitution", { KeyboardDistance.costs.vowelSubstitution }, { KeyboardDistance.costs.vowelSubstitution = $0 }),
+        ("substitution", { KeyboardDistance.costs.substitution }, { KeyboardDistance.costs.substitution = $0 }),
+        ("transposition", { KeyboardDistance.costs.transposition }, { KeyboardDistance.costs.transposition = $0 }),
+        ("repeatInsertion", { KeyboardDistance.costs.repeatInsertion }, { KeyboardDistance.costs.repeatInsertion = $0 }),
+        ("neighborInsertion", { KeyboardDistance.costs.neighborInsertion }, { KeyboardDistance.costs.neighborInsertion = $0 }),
+        ("insertion", { KeyboardDistance.costs.insertion }, { KeyboardDistance.costs.insertion = $0 }),
+        ("deletion", { KeyboardDistance.costs.deletion }, { KeyboardDistance.costs.deletion = $0 }),
+        ("doubledDeletion", { KeyboardDistance.costs.doubledDeletion }, { KeyboardDistance.costs.doubledDeletion = $0 }),
+        ("firstLetter", { KeyboardDistance.costs.firstLetter }, { KeyboardDistance.costs.firstLetter = $0 }),
+    ]
+
+    var best = evaluate(devTypos, devCorrect, realDev)
+    print("\nstart (dev): \(best.line)")
+    for round in 1...5 {
+        var improved = false
+        for knob in knobs {
+            let start = knob.get()
+            let tries = knob.name == "contextWeight"
+                ? [start - 0.1, start - 0.05, start + 0.03, start + 0.06].filter { $0 > 0 }
+                : [start * 0.6, start * 0.8, start * 1.25, start * 1.6] + (start == 0 ? [0.1, 0.3] : [])
+            var bestValue = start
+            for v in tries {
+                knob.set(v)
+                let r = evaluate(devTypos, devCorrect, realDev)
+                if r.j > best.j + 0.01 { best = r; bestValue = v; improved = true }
+            }
+            knob.set(bestValue)
+        }
+        print("round \(round) (dev): \(best.line)")
+        if !improved { break }
+    }
+    print("\nTuned settings:")
+    for knob in knobs { print(String(format: "  %@ = %.3f", knob.name as NSString, knob.get())) }
+    print("\nTEST (never used for tuning): \(evaluate(synthetic, correct, realTest).line)")
+}
+
+if let i = CommandLine.arguments.firstIndex(of: "--explain"), i + 2 < CommandLine.arguments.count {
+    // acbench . --explain <previous> <typo>
+    let prev = CommandLine.arguments[i + 1], typo = CommandLine.arguments[i + 2]
+    let cfg = contextual.config
+    let rows = model.candidates(for: typo).map { c -> (String, Double, Double, Double) in
+        let cost = KeyboardDistance.between(typo, c)
+        let p = model.probability(of: c, after: prev, contextWeight: cfg.contextWeight)
+        return (c, cost, log(p), log(p) - cfg.errorWeight * cost)
+    }.sorted { $0.3 > $1.3 }
+    print("\n\(prev) \(typo) → \(contextual.correction(for: typo, previous: prev) ?? "–")   (limit \(cfg.maxCost(typo.count)))")
+    for r in rows.prefix(8) { print(String(format: "  %-12@ cost %.1f  logP %6.2f  score %7.2f", r.0 as NSString, r.1, r.2, r.3)) }
+}
+
 if CommandLine.arguments.contains("--why") {
     // Where do laptop-typo misses come from?
     var missingCandidate = 0, outscored = 0, gated = 0, ok = 0
@@ -191,4 +277,16 @@ if CommandLine.arguments.contains("--why") {
     }
     print("\nok \(ok)  not-a-candidate \(missingCandidate)  outscored \(outscored)  left-alone \(gated)")
     for (k, v) in examples { print("\n[\(k)]"); v.forEach { print("  " + $0) } }
+}
+
+if CommandLine.arguments.contains("--ceiling") {
+    // Of the laptop typos still missed, how many are ties the typed letters can't settle:
+    // the word we picked is at least as close on the keyboard as the one that was meant.
+    var missed = 0, tie = 0
+    for r in synthetic where r.count == 3 {
+        guard let out = contextual.correction(for: r[1], previous: r[0])?.lowercased(), out != r[2] else { continue }
+        missed += 1
+        if KeyboardDistance.between(r[1], out) <= KeyboardDistance.between(r[1], r[2]) { tie += 1 }
+    }
+    print("\nwrong picks \(missed), of which \(tie) are ties/closer on the keyboard (only more context can settle them)")
 }

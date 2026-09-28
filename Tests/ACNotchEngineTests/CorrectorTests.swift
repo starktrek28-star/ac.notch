@@ -10,8 +10,9 @@ final class CorrectorTests: XCTestCase {
 
     func testKeyboardDistance() {
         XCTAssertLessThan(KeyboardDistance.between("hwllo", "hello"), KeyboardDistance.between("hwllo", "hollo"))
-        XCTAssertEqual(KeyboardDistance.between("teh", "the"), 0.6, accuracy: 0.001)
-        XCTAssertEqual(KeyboardDistance.between("helo", "hello"), 0.5, accuracy: 0.001)
+        // A swap and a dropped double letter are cheap slips; a random wrong letter isn't.
+        XCTAssertLessThan(KeyboardDistance.between("teh", "the"), KeyboardDistance.between("tqe", "the"))
+        XCTAssertLessThan(KeyboardDistance.between("helo", "hello"), KeyboardDistance.between("hemlo", "hello"))
     }
 
     func testCommonTypos() {

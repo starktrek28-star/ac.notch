@@ -154,22 +154,36 @@ def make_typo(word, rng):
 
 rng = random.Random(20260928)
 rng.shuffle(test_sentences)
-synthetic, correct = [], []
-for text in test_sentences:
-    raw = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text.replace("’", "'"))
-    if not raw:
-        continue
-    idx = rng.randrange(len(raw))
-    prev = raw[idx - 1].lower() if idx > 0 else "<s>"
-    word = raw[idx]
-    if len(correct) < 3000:
-        correct.append((prev, word))
-    elif len(synthetic) < 3000 and word.islower() and len(word) >= 3 and word in unigrams:
-        typo = make_typo(word, rng)
-        if typo:
-            synthetic.append((prev, typo, word))
-    if len(synthetic) >= 3000 and len(correct) >= 3000:
-        break
+def sample(sentences, rng):
+    """3,000 correct words, then 3,000 typos, each with the word before it."""
+    synthetic, correct, used = [], [], 0
+    for text in sentences:
+        used += 1
+        raw = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text.replace("’", "'"))
+        if not raw:
+            continue
+        idx = rng.randrange(len(raw))
+        prev = raw[idx - 1].lower() if idx > 0 else "<s>"
+        word = raw[idx]
+        if len(correct) < 3000:
+            correct.append((prev, word))
+        elif len(synthetic) < 3000 and word.islower() and len(word) >= 3 and word in unigrams:
+            typo = make_typo(word, rng)
+            if typo:
+                synthetic.append((prev, typo, word))
+        if len(synthetic) >= 3000 and len(correct) >= 3000:
+            break
+    return synthetic, correct, used
+
+# The test set, then a separate tuning ("dev") set from the sentences after it, so settings
+# are chosen on data the final score never sees.
+synthetic, correct, used = sample(test_sentences, rng)
+dev_synthetic, dev_correct, _ = sample(test_sentences[used:], random.Random(20260929))
+for name, rows in [("dev_synthetic.tsv", dev_synthetic), ("dev_correct.tsv", dev_correct)]:
+    with open(os.path.join(bench_dir, name), "w") as f:
+        f.write("# tuning set: same format as the test file without the dev_ prefix; never scored as the result\n")
+        for row in rows:
+            f.write("\t".join(row) + "\n")
 
 with open(os.path.join(bench_dir, "synthetic.tsv"), "w") as f:
     f.write("# previous\ttypo\tintended — synthetic keyboard typos in held-out Tatoeba sentences (CC BY 2.0 FR)\n")
