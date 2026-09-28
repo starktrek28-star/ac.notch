@@ -72,17 +72,34 @@ word is finished; the live preview while typing uses the engine alone (~0.1 ms p
 - Local Swift for Linux: swift-6.0.3-RELEASE-ubuntu24.04 from download.swift.org; `swift test`,
   `swift build -c release --product acbench && .build/release/acbench .`
 
-### UNFINISHED — user request (Sep 28): push laptop typos from ~94% toward 99.9%
-Do this first in session 2. Started but blocked by a tooling outage: `Sources/acbench/main.swift`
-has a new `--why` mode (not yet built or committed) that splits misses into not-a-candidate /
-outscored / left-alone. Build it, run `.build/release/acbench . --why`, attack the biggest bucket
-(dev/test split first so tuning isn't on the test set; trigram or longer context; error-model costs
-learned from data; distance-2 substitution candidates; a larger bigram set). Also measure the honest
-ceiling: some typos have two valid answers (loed → loved/lied, ahd → had/and), so 99.9% on this set
-is likely impossible for any autocorrect. Report the ceiling alongside the new number.
+### Extra work Sep 28 (user request: push 94% toward 99.9%) — done
+- Added a separate **tuning set** (`Benchmark/data/dev_*.tsv`, held-out sentences after the test
+  sample; test files unchanged, same checksums) and split real misspellings into tuning/test halves.
+- Every slip type got its own cost, plus per-length limits; `acbench --autotune` tunes them on the
+  tuning set only (coordinate descent, 5 rounds), then scores the test set once.
+- Tuned settings are the defaults now (`KeyboardDistance.Costs`, `Corrector.Config`).
+- **macOS CI, the app as shipped (engine + Apple):**
+
+| | Real misspellings fixed | …wrong | Laptop typos fixed | …wrong | Correct words changed |
+| --- | --- | --- | --- | --- | --- |
+| Before today | 72.0% | 13.2% | 69.9% | 8.8% | 0.1% |
+| After session 1 | 78.6% | 13.1% | 94.1% | 4.8% | 0.0% |
+| **Now** | **82.4%** | **10.3%** | **97.5%** | **2.1%** | **0.0%** |
+
+  (Linux, engine alone, test halves: laptop typos 97.7% / 2.2% wrong, real 73.6% / 11.8%.)
+- **Ceiling:** 67 of 3,000 laptop typos are still wrong; 43 of those are ties the typed letters
+  can't settle ("pla" play/pal, "knw" know/knew, "ocket" pocket/rocket). With only the previous
+  word as context the practical ceiling on this test is ~98.6%. Going beyond needs the words
+  *after* the typo: re-checking a word once the next word is typed (iOS 17 does sentence-level
+  correction). That's the natural next step, together with the step-5 language model.
+- Caveat: the laptop-typo set is synthetic (my model of slips: 35% neighbour key, 25% swap,
+  20% dropped letter, 10% extra neighbour key, 10% doubled letter). Tuning to it partly tunes to
+  that assumption; the real-misspelling numbers (human data) improving too is a good sign.
+- Tools: `acbench . --why` (miss breakdown), `--explain <prev> <typo>` (scores), `--ceiling`.
 
 ### Next (session 2)
-- Separate tuning set from test set.
+- Sentence-level correction: re-check the previous word once the next one is typed (needs a test
+  set with the following word) — the path from ~97.5% toward the ceiling and beyond.
 - Step 3 laptop typo patterns (space/letter slips like "thequick", missing apostrophes beyond the list),
   step 4 personal learning (frequently typed words), step 5 small on-device model, measured.
 - Check the Mac CI numbers: engine + Apple vs before.
