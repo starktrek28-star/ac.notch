@@ -17,6 +17,15 @@ jobs:
       - name: Toolchain
         run: swift --version
 
+      - name: Engine tests
+        run: swift test
+
+      - name: Autocorrect benchmark
+        run: |
+          swift build -c release --product acbench
+          .build/release/acbench . | tee benchmark.md
+          cat benchmark.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build universal app
         run: ./scripts/build-app.sh
 

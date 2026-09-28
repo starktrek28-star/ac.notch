@@ -1,3 +1,4 @@
+import ACNotchEngine
 import AppKit
 
 /// Watches every keystroke (via a CGEvent tap), tracks the word being typed,
@@ -18,6 +19,11 @@ final class TypingController {
     private var buffer = ""
     /// What the strip is showing for the word being typed.
     private var currentOptions: [StripOption] = []
+    /// The word before the one being typed (lowercase), "<s>" at the start of a sentence, nil when
+    /// unknown. Context for corrections: "of teh" → "the".
+    private var previousWord: String?
+    /// `previousWord` as it was for the last finished word, restored when backspacing back into it.
+    private var previousOfLastWord: String?
     /// After backspacing into a word that was autocorrected: the original is on offer (Tab takes it).
     private var revertOffer: (original: String, corrected: String)?
     private var trust: Trust = .unknown
@@ -55,6 +61,7 @@ final class TypingController {
     func reset(soft: Bool = false) {
         let word = buffer
         let trusted = trust == .trusted
+        previousWord = nil   // the caret moved or the text changed in a way we didn't see
         currentOptions = []
         revertOffer = nil
         buffer = ""
@@ -139,6 +146,7 @@ final class TypingController {
         // Return, Enter, Tab, Home, PageUp, ForwardDelete, End, PageDown, arrows
         case 36, 76, 48, 115, 116, 117, 119, 121, 123, 124, 125, 126:
             reset(soft: true)
+            if keyCode == 36 || keyCode == 76 { previousWord = "<s>" }   // a new line starts fresh
             return true
         default:
             break
@@ -174,6 +182,7 @@ final class TypingController {
             revertOffer = (correction.original, correction.corrected)
             buffer = correction.corrected
             trust = .trusted
+            previousWord = previousOfLastWord
             notch.uncommitWord()
             currentOptions = [
                 StripOption(text: correction.corrected, kind: .info, highlighted: true),
@@ -199,13 +208,18 @@ final class TypingController {
         Diagnostics.log("word end (\(buffer.count) letters, trusted=\(trust == .trusted))")
         let word = buffer
         let wasTrusted = trust == .trusted
+        let context = previousWord
         buffer = ""
         currentOptions = []
         trust = .trusted
+        previousOfLastWord = context
 
-        guard wasTrusted, !word.isEmpty, Settings.shared.autocorrect,
-              let corrected = suggester.analyze(word).autocorrection, corrected != word,
-              !CaretLocator.focusIsAddressBar() else {
+        let corrected = wasTrusted && !word.isEmpty && Settings.shared.autocorrect
+            ? suggester.analyze(word, previous: context).autocorrection : nil
+        let finalWord = corrected ?? word
+        previousWord = ".!?".contains(boundary) ? "<s>" : (wasTrusted && !word.isEmpty ? finalWord.lowercased() : nil)
+
+        guard let corrected, corrected != word, !CaretLocator.focusIsAddressBar() else {
             // The finished word joins the trail; the strip fades once typing pauses.
             if wasTrusted, !word.isEmpty {
                 notch.commitWord(word)
@@ -234,7 +248,7 @@ final class TypingController {
 
     private func refreshStrip() {
         guard !buffer.isEmpty else { notch.hide(after: idleFade); return }
-        currentOptions = suggester.analyze(buffer).options
+        currentOptions = suggester.analyze(buffer, previous: previousWord).options
         notch.show(currentOptions)
     }
 
