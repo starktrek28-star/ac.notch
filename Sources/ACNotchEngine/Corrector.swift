@@ -25,8 +25,9 @@ public final class Corrector {
         /// When another dictionary (the system's) knows the typed word but ours doesn't, it still
         /// gets corrected if the fix is a slip no bigger than this. That dictionary accepts many
         /// rare words that are far more often typos ("hee", "wll"). Capitalised words are always
-        /// left alone (names). 0 = always trust the other dictionary.
-        public var overrideElsewhereUpTo = 0.0
+        /// left alone (names). 0 = always trust the other dictionary. 1.0 measured best on macOS
+        /// (see docs/WORK_LOG.md).
+        public var overrideElsewhereUpTo = 1.0
         /// A candidate suggested by the other spell checker as its own correction gets this bonus.
         public var preferredBonus = 0.0
         public init() {}

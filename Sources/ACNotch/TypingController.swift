@@ -215,7 +215,7 @@ final class TypingController {
         previousOfLastWord = context
 
         let corrected = wasTrusted && !word.isEmpty && Settings.shared.autocorrect
-            ? suggester.analyze(word, previous: context).autocorrection : nil
+            ? suggester.analyze(word, previous: context, thorough: true).autocorrection : nil
         let finalWord = corrected ?? word
         previousWord = ".!?".contains(boundary) ? "<s>" : (wasTrusted && !word.isEmpty ? finalWord.lowercased() : nil)
 

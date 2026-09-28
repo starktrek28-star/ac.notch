@@ -87,13 +87,9 @@ func appleCorrection(_ word: String) -> String? {
     let range = NSRange(location: 0, length: (word as NSString).length)
     return checker.correction(forWordRange: range, in: word, language: checker.language(), inSpellDocumentWithTag: tag)
 }
-// Ways of combining the engine with Apple's spell checker, from strict to loose.
-for (label, overrideUpTo, bonus) in [("trusts Apple's dictionary", 0.0, 0.0),
-                                     ("overrides Apple for slips ≤0.6", 0.6, 0.0),
-                                     ("overrides Apple for slips ≤1.0", 1.0, 0.0),
-                                     ("overrides ≤0.6, Apple's pick +2", 0.6, 2.0),
-                                     ("overrides ≤1.0, Apple's pick +2", 1.0, 2.0),
-                                     ("overrides ≤1.0, Apple's pick +4", 1.0, 4.0)] {
+// How the app combines the engine with Apple's spell checker. (Session 1 compared stricter and
+// looser combinations; see docs/WORK_LOG.md. Add rows here to compare again.)
+for (label, overrideUpTo, bonus) in [("what the app uses", 1.0, 0.0)] {
     var cfg = Corrector.Config()
     cfg.overrideElsewhereUpTo = overrideUpTo
     cfg.preferredBonus = bonus

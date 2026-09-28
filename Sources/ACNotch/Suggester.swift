@@ -73,8 +73,11 @@ final class Suggester {
         }
     }
 
-    /// - Parameter previous: the word before, lowercase; "<s>" at a sentence start; nil if unknown.
-    func analyze(_ word: String, previous: String? = nil) -> Analysis {
+    /// - Parameters:
+    ///   - previous: the word before, lowercase; "<s>" at a sentence start; nil if unknown.
+    ///   - thorough: also ask Apple's spell checker for guesses. That's slow (~10 ms), so it's done
+    ///     once when a word is finished, not on every keystroke of the live preview.
+    func analyze(_ word: String, previous: String? = nil, thorough: Bool = false) -> Analysis {
         let lower = word.lowercased()
         var autocorrection: String?
         var misspelled = false
@@ -84,7 +87,7 @@ final class Suggester {
             if let corrector {
                 autocorrection = corrector.correction(
                     for: word, previous: previous,
-                    extraCandidates: misspelled ? appleGuesses(word) : [],
+                    extraCandidates: misspelled && thorough ? appleGuesses(word) : [],
                     isKnownElsewhere: { [weak self] in self?.appleKnows($0) ?? false })
             } else if misspelled, word.count >= 2 {
                 let range = NSRange(location: 0, length: (word as NSString).length)
